@@ -1,0 +1,6 @@
+/target
+/output
+flamegraph.svg
+perf.*
+configurations/
+test/
