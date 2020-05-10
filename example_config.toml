@@ -1,0 +1,180 @@
+# This is a configuration file for `nparty`
+# This file uses the May 2020 format introduced with the Rust rewrite. 
+# I expect this configuration format will be forward-compatible.
+
+# This example file is still pretty usable. It defines NPP contests, matching
+# the actual winners of the 2019 Senate races, plus some 3PPs (Labor, Coalition, Greens)
+# for the ACT, the NT, Qld (i.e. for Brisbane City Council analysis) and for SA.
+# You'll just need to update the file paths. 
+
+# The AEC"s 2019 ballot format eschews ballot numbers in favour of
+# ticketcode:name, one per column. Use these to define (pseudo)candidates.
+# Tip:   head -n 1 PREFS_PATH | sed -e "s/,/\", \"/g"   will get you 95% there...
+# ... if you want to do things manually. See also `nparty configure`. 
+
+[DEFAULT]
+
+# The [DEFAULT] section is special; it has the top-level information.
+# You can also override any of the values from this section in the other sections, if need be.
+# Please note that this functionality is not part of the TOML spec but implemented by nparty itself.
+
+###### Inputs ######
+
+# The year of the (Senate) election. REQUIRED.
+YEAR = "2019"
+
+# POLLING_PLACES_PATH is the relatively tiny spreadsheet detailing all the polling places. 
+#  REQUIRED for the first (Distribution) stage of analysis and therefore all. 
+POLLING_PLACES_PATH = "/path/to/Results/2019/GeneralPollingPlacesDownload-24310.csv"
+
+# SA1S_BREAKDOWN_PATH is the reasonably large spreadsheet detailing the number of voters from each
+#  SA1 at each booth {technically for House, but we compensate}.
+#  Required for the second (Projection) stage. 
+SA1S_BREAKDOWN_PATH = "/path/to/Results/2019/polling-place-by-sa1s-2019.csv"
+
+###### Outputs ######
+
+# OUTPUT_DIR is the folder to put the output in. REQUIRED.
+OUTPUT_DIR = "output/AUS_2019"
+
+# These next three files will go in OUTPUT_DIR/Scenario/filename.csv
+# All are REQUIRED (but may go unused).
+
+# NPP_BOOTHS_FN defines the filename of the spreadsheet detailing NPP preferences by booth.
+NPP_BOOTHS_FN = "NPP_Booths.csv"
+
+# SA1S_PREFS_FN defines the filename of the spreadsheet detailing NPP preferences by SA1.
+SA1S_PREFS_FN = "SA1_Prefs.csv"
+
+# NPP_DISTS_FN defines the filename of the spreadsheet detailing NPP preferences by state/local district,
+NPP_DISTS_FN = "District_NPPs.csv"
+
+
+########################################################################################################################
+######                                                                                                            ######
+######                        Welcome to the especially editable part of the file!                                ######
+######                                                                                                            ######
+######            All non-DEFAULT sections define "Scenarios" - competing groups of [pseudo]candidates.           ######
+######                                                                                                            ######
+########################################################################################################################
+
+
+[ACT_2PP]
+# PREFS_PATH defines where the actual preferences path is. REQUIRED.
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-ACT.csv"
+# SA1S_DISTS_PATH maps SA1s to districts at state or local level.
+#  Required only for the third (Combination) stage. 
+SA1S_DISTS_PATH = "/path/to/Redistributions and Boundaries/ACT_2020/SA1s_Electorates.csv"
+# STATE defines the state/territory that this scenario applies to. REQUIRED.
+STATE = "ACT"
+# GROUPS is a subtable defining the competing groups of [pseudo]candidates. REQUIRED.
+#  Please note that it has to be defined after everything else in the Scenario
+[ACT_2PP.GROUPS]
+Alp = ["G:Australian Labor Party", "G:GALLAGHER Katy", "G:WAITES Nancy"]
+Lib = ["A:Liberal", "A:SESELJA Zed", "A:GUNNING Robert"]
+
+
+[ACT_3PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-ACT.zip"
+SA1S_DISTS_PATH = "/path/to/Redistributions and Boundaries/ACT_2020/SA1s_Electorates.csv"
+STATE = "ACT"
+[ACT_3PP.GROUPS]
+Alp = ["G:Australian Labor Party", "G:GALLAGHER Katy", "G:WAITES Nancy"]
+Lib = ["A:Liberal", "A:SESELJA Zed", "A:GUNNING Robert"]
+Grn = ["B:The Greens", "B:KYBURZ Penny", "B:DAVIDSON Emma"]
+
+
+[NSW_3PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-NSW.zip"
+# SA1S_DISTS_PATH =
+STATE = "NSW"
+[NSW_3PP.GROUPS]
+Alp = ["J:Labor/Country Labor", "J:SHELDON Tony", "J:AYRES Tim", "J:LI Jason Yat-Sen", "J:PENGELLY Simonne", "J:CHANDRALA Aruna", "J:SHEAHAN Charlie"]
+Lnp = ["D:Liberal & Nationals", "D:HUGHES Hollie", "D:BRAGG Andrew", "D:DAVEY Perin", "D:MOLAN Jim", "D:FARRAWAY Sam", "D:FENELEY Michael"]
+Grn = ["G:The Greens", "G:FARUQI Mehreen", "G:JACOBS Rachael", "G:STEER Louise", "G:CLARK Philippa", "G:CHIA Roz", "G:ELLSMORE Sylvie"]
+
+
+[NT_2PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-NT.zip"
+SA1S_DISTS_PATH = "/path/to/Redistributions and Boundaries/NT_2020/SA1s_Electorates.csv"
+STATE = "NT"
+[NT_2PP.GROUPS]
+Alp = ["B:Australian Labor Party (Northern Territory) Branch", "B:McCARTHY Malarndirri", "B:KURNORTH Wayne"]
+Lib = ["C:Country Liberals (NT)", "C:McMAHON Sam", "C:BURGOYNE Joshua"]
+
+[NT_3PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-NT.zip"
+SA1S_DISTS_PATH = "/path/to/Redistributions and Boundaries/NT_2020/SA1s_Electorates.csv"
+STATE = "NT"
+[NT_3PP.GROUPS]
+Alp = ["B:Australian Labor Party (Northern Territory) Branch", "B:McCARTHY Malarndirri", "B:KURNORTH Wayne"]
+Lib = ["C:Country Liberals (NT)", "C:McMAHON Sam", "C:BURGOYNE Joshua"]
+Grn = ["H:The Greens", "H:SRI Anna", "H:GILL Lia Ngaree"]
+
+[QLD_4PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-QLD.zip"
+SA1S_DISTS_PATH = "/path/to/Redistributions and Boundaries/QLD_2017/SA1s_Dists_Qld17_2016_SA1s.csv"
+STATE = "QLD"
+[QLD_4PP.GROUPS]
+Alp = ["J:Australian Labor Party", "J:GREEN Nita", "J:KETTER Chris", "J:GILBERT Frank", "J:MAJOR Tania", "J:SCHINNERL Stacey", "J:WARRY Christina"]
+Lnp = ["D:Liberal National Party of Queensland", "D:SCARR Paul", "D:MCDONALD Susan", "D:RENNICK Gerard", "D:MACDONALD Ian", "D:CAMM Amanda", "D:TOBIN Nicole"]
+Phn = ["B:Pauline Hanson's One Nation", "B:ROBERTS Malcolm", "B:DICKSON Steve"]
+Grn = ["H:The Greens", "H:WATERS Larissa", "H:SIDHU Navdeep Singh", "H:KLOOT Johanna", "H:ELLIS Raelene", "H:BERTRAM Miranda", "H:KENNEDY Kirsten"]
+
+
+[QLD_3PP_GRN_BCC]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-QLD.zip"
+SA1S_DISTS_PATH = "/path/to/Redistributions and Boundaries/Brisbane_2019/SA1s_Wards.csv"
+STATE = "QLD"
+[QLD_3PP_GRN_BCC.GROUPS]
+Alp = ["J:Australian Labor Party", "J:GREEN Nita", "J:KETTER Chris", "J:GILBERT Frank", "J:MAJOR Tania", "J:SCHINNERL Stacey", "J:WARRY Christina"]
+Lnp = ["D:Liberal National Party of Queensland", "D:SCARR Paul", "D:MCDONALD Susan", "D:RENNICK Gerard", "D:MACDONALD Ian", "D:CAMM Amanda", "D:TOBIN Nicole"]
+Grn = ["H:The Greens", "H:WATERS Larissa", "H:SIDHU Navdeep Singh", "H:KLOOT Johanna", "H:ELLIS Raelene", "H:BERTRAM Miranda", "H:KENNEDY Kirsten"]
+
+[SA_3PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-SA.zip"
+# SA1S_DISTS_PATH =
+STATE = "SA"
+[SA_3PP.GROUPS]
+Alp = ["O:Australian Labor Party", "O:GALLACHER Alex", "O:SMITH Marielle", "O:GORE Emily", "O:HARRISON Larissa"]
+Lib = ["G:Liberal", "G:RUSTON Anne", "G:FAWCETT David", "G:ANTIC Alex", "G:GICHUHI Lucy"]
+Grn = ["J:The Greens", "J:HANSON-YOUNG Sarah", "J:SUMNER Major Moogy", "J:ROZITISOLDS Gwydion", "J:SETO Robyn"]
+
+
+[SA_4PP_CA]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-SA.zip"
+# SA1S_DISTS_PATH =
+STATE = "SA"
+[SA_4PP_CA.GROUPS]
+Alp = ["O:Australian Labor Party", "O:GALLACHER Alex", "O:SMITH Marielle", "O:GORE Emily", "O:HARRISON Larissa"]
+Lib = ["G:Liberal", "G:RUSTON Anne", "G:FAWCETT David", "G:ANTIC Alex", "G:GICHUHI Lucy"]
+Grn = ["J:The Greens", "J:HANSON-YOUNG Sarah", "J:SUMNER Major Moogy", "J:ROZITISOLDS Gwydion", "J:SETO Robyn"]
+Xen = ["C:Centre Alliance", "C:KAKOSCHKE-MOORE Skye", "C:BOSSIE Craig"]
+
+[TAS_4PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-TAS.zip"
+# SA1S_DISTS_PATH =
+STATE = "TAS"
+[TAS_4PP.GROUPS]
+Alp = ["I:Australian Labor Party", "I:BROWN Carol", "I:BILYK Catryna", "I:SHORT John", "I:SINGH Lisa", "I:ROBERTS Wayne", "I:FLANAGAN Robert"]
+Lib = ["E:Liberal", "E:COLBECK Richard", "E:CHANDLER Claire", "E:DENISON Tanya"]
+Jln = ["L:Jacqui Lambie Network", "L:LAMBIE Jacqui", "L:WILLIAMS Glynn", "L:REYNOLDS Chris"]
+Grn = ["D:The Greens", "D:McKIM Nick", "D:HUTCHINSON Helen", "D:MARSH Simone"]
+
+[VIC_3PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-VIC.zip"
+# SA1S_DISTS_PATH =
+STATE = "VIC"
+[VIC_3PP.GROUPS]
+Alp = ["X:Australian Labor Party", "X:CICCONE Raffaele", "X:WALSH Jess", "X:MARSHALL Gavin", "X:SARWARA Parvinder", "X:DOUGLAS Karen", "X:CRAWFORD Louise"]
+Lnp = ["A:LIBERAL/THE NATIONALS", "A:PATERSON James", "A:HUME Jane", "A:VAN David", "A:RANK Anita", "A:HOPPITT Kyle", "A:MULCAHY Julian"]
+Grn = ["V:The Greens (VIC)", "V:RICE Janet", "V:SABARATNAM Apsara", "V:PROCTOR Claire", "V:THOMSON Nakita", "V:BARNES Alice", "V:CAMERON Judy"]
+
+[WA_3PP]
+PREFS_PATH = "/path/to/Results/2019/aec-senate-formalpreferences-24310-WA.zip"
+# SA1S_DISTS_PATH =
+STATE = "WA"
+[WA_3PP.GROUPS]
+Alp = ["G:Australian Labor Party", "G:DODSON Patrick", "G:PRATT Louise", "G:HERBERT Alana", "G:FRENCH Thomas", "G:GHOSH Varun", "G:VAUGHAN Alison"]
+Lib = ["C:Liberal", "C:REYNOLDS Linda", "C:BROCKMAN Slade", "C:O'SULLIVAN Matt", "C:BOTHA Trischa"]
+Grn = ["D:The Greens (WA)", "D:STEELE-JOHN Jordon", "D:WATSON Giz", "D:LONSDALE Heather", "D:KHADKA Bhuwan", "D:van GROOTEL Jacqueline", "D:CAHILL Jordan Louise"]
