@@ -26,7 +26,9 @@ factorial = "0.2.0"
 clap = {version = "~2.27.0", features = ["yaml"]}
 toml_edit = "0.1.5"
 tabwriter = "1.2.1"
-
+ron = "0.5.1"
+url = "2.1.1"
+reqwest = {version = "0.10.4", features = ["blocking", "gzip", "brotli"]}
 
 [profile.release]
 debug = true

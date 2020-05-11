@@ -1,0 +1,38 @@
+{
+    "2016 Federal Election": DlItems(
+        year: "2016",
+        id: "20499",
+        polling_places: "https://results.aec.gov.au/20499/Website/Downloads/GeneralPollingPlacesDownload-20499.csv",
+        political_parties: "https://results.aec.gov.au/20499/Website/Downloads/GeneralPartyDetailsDownload-20499.csv",
+        sa1s_pps: "http://aec.gov.au/Elections/Federal_Elections/2016/files/polling-place-by-sa1s-2016.xlsx",
+        candidates: "https://www.aec.gov.au/Elections/federal_elections/2016/files/2016federalelection-all-candidates-nat-30-06-924.csv",
+        formal_prefs: {
+            "ACT" : "http://results.aec.gov.au/20499/Website/External/aec-senate-formalpreferences-20499-ACT.zip",
+            "NSW" : "http://results.aec.gov.au/20499/Website/External/aec-senate-formalpreferences-20499-NSW.zip",
+            "NT" : "http://results.aec.gov.au/20499/Website/External/aec-senate-formalpreferences-20499-NT.zip",
+            "QLD" : "http://results.aec.gov.au/20499/Website/External/aec-senate-formalpreferences-20499-QLD.zip",
+            "SA" : "http://results.aec.gov.au/20499/Website/External/aec-senate-formalpreferences-20499-SA.zip",
+            "TAS" : "http://results.aec.gov.au/20499/Website/External/aec-senate-formalpreferences-20499-TAS.zip",
+            "VIC" : "http://results.aec.gov.au/20499/Website/External/aec-senate-formalpreferences-20499-VIC.zip",
+            "WA" : "http://results.aec.gov.au/20499/Website/External/aec-senate-formalpreferences-20499-WA.zip",
+        }
+    ),
+    "2019 Federal Election": DlItems(
+        year: "2019",
+        id: "24310",
+        polling_places: "https://results.aec.gov.au/24310/Website/Downloads/GeneralPollingPlacesDownload-24310.csv",
+        political_parties: "https://results.aec.gov.au/24310/Website/Downloads/GeneralPartyDetailsDownload-24310.csv",
+        sa1s_pps: "https://aec.gov.au/Elections/federal_elections/2019/files/downloads/polling-place-by-sa1s-2019.csv",
+        candidates: "https://www.aec.gov.au/Elections/federal_elections/2019/files/2019federalelection-all-candidates-nat-17-05.csv",
+        formal_prefs: {
+            "ACT" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-ACT.zip",
+            "NSW" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-NSW.zip",
+            "NT" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-NT.zip",
+            "QLD" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-QLD.zip",
+            "SA" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-SA.zip",
+            "TAS" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-TAS.zip",
+            "VIC" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-VIC.zip",
+            "WA" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-WA.zip",
+        }
+    )
+}

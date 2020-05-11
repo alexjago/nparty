@@ -4,3 +4,4 @@ flamegraph.svg
 perf.*
 configurations/
 test/
+dl_folder/

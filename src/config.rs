@@ -14,6 +14,8 @@ use std::io::Write;
 
 use crate::utils::{StateAb, ToStateAb};
 use crate::booths::Parties;
+use crate::term::{BOLD, END};
+
 
 // TODO: long term goals to get back to Python equivalent functionality
 // We will support a TOML setup that's otherwise consistent with Python's ConfigParser's
@@ -233,7 +235,6 @@ pub fn get_scenarios(cfg: Document) -> Result<BTreeMap<String, Scenario>, &'stat
 }
 
 // this function handles `nparty list`
-// First of all let's just implement tab-separated output
 pub fn list_scenarios(cfgpath: &Path) {
     let headers = "Scenario\tPreferred Parties\tPlace\tYear";
     let mut output = Vec::new();
@@ -252,7 +253,12 @@ pub fn list_scenarios(cfgpath: &Path) {
             write!(&mut tw, "{}\n", i).unwrap();
         }
         tw.flush().unwrap();
-        println!("{}", String::from_utf8(tw.into_inner().unwrap()).unwrap());
+        let output = String::from_utf8(tw.into_inner().unwrap()).unwrap();
+        let firstnewline = output.find("\n").unwrap();
+        let hline = &output[0..firstnewline];
+        let rline = &output[firstnewline..output.len()];
+        println!("{}{}{}{}", BOLD, hline, END, rline);
+        
     } else {
         println!("{}", headers);
         for i in output {

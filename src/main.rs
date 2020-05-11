@@ -1,7 +1,6 @@
-// nparty: N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis.  
-// Copyright (C) 2017-2020  Alex Jago <abjago@abjago.net>.
-// Released under the MIT or Apache-2.0 licenses, at your option. 
-
+/// nparty: N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis.  
+/// Copyright (C) 2017-2020  Alex Jago <abjago@abjago.net>.
+/// Released under the MIT or Apache-2.0 licenses, at your option. 
 extern crate csv;
 #[macro_use] extern crate serde_derive;
 extern crate unicode_segmentation;
@@ -16,6 +15,8 @@ extern crate factorial;
 extern crate toml_edit;
 #[macro_use] extern crate lazy_static;
 extern crate tabwriter;
+extern crate ron;
+extern crate url;
 
 use clap::{App, load_yaml};
 
@@ -27,13 +28,14 @@ mod booths;
 mod multiplier;
 mod aggregator;
 mod config;
+mod data;
 
 fn main() {
 
     let yml = load_yaml!("cli.yaml");
     let m = App::from(yml).get_matches();
 
-    // eprintln!("{:#?}", &m);
+    eprintln!("{:#?}", &m);
 
     // Match on various subcommands
 
@@ -42,6 +44,21 @@ fn main() {
     } else if let Some(sm) = m.subcommand_matches("list") {
         let cfgpath: &Path = Path::new(sm.value_of_os("configfile").expect("Error with configuration-file path."));
         config::list_scenarios(cfgpath);
+    } else if let Some(sm) = m.subcommand_matches("data") {
+        if sm.is_present("download"){
+            let dldir: &Path = Path::new(sm.value_of_os("download").expect("Error with download path."));
+            data::download(dldir);
+            // TODO: prompt to also upgrade
+        } else {
+            // examine
+            let argy = sm.value_of("examine").expect("Invalid file.");
+            if argy == "-"{
+                data::examine_txt();
+            } else {
+                let filey: &Path = Path::new(sm.value_of_os("examine").expect("Invalid file."));
+                data::examine_html(filey);    
+            }
+        }
     }
 
     
