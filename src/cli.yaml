@@ -70,7 +70,7 @@ subcommands:
                         help: Indicate lack of header row for input file
                     - corredspondencefile:
                         help: "Columns should be: 'SA1_7DIGITCODE_old', 'SA1_7DIGITCODE_new', 'RATIO'"
-                        value_name: CORR_FILE
+                        value_name: CORRESPONDENCE_FILE
                         required: true
                     - input:
                         help: "input file; columns should be 'SA1_Id', 'Dist_Name', 'Pop', 'Pop_Share'"

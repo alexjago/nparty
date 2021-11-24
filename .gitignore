@@ -5,3 +5,5 @@ perf.*
 configurations/
 test/
 dl_folder/
+performance/
+.DS_Store

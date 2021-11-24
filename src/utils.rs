@@ -3,10 +3,10 @@ use regex;
 use std::char;
 use std::collections::HashMap;
 use std::fmt;
+use std::fs::File;
 use std::io;
 use std::io::{Read, Seek, SeekFrom};
 use std::path;
-use std::fs::File;
 use zip;
 
 use super::term;
@@ -183,10 +183,10 @@ impl fmt::Display for NominationType {
 /// and finally all the ungrouped (UG) candidates.
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub struct Candidate {
-    surname: String,
-    ballot_given_nm: String,
-    ballot_number: BallotNumber,
-    party: String,
+    pub surname: String,
+    pub ballot_given_nm: String,
+    pub ballot_number: BallotNumber,
+    pub party: String,
 }
 
 pub type BallotPosition = BallotNumber;
@@ -201,13 +201,13 @@ pub type CandsData = HashMap<StateAb, BallotPaper>;
 /// Specifically, the fields we care about.
 #[derive(Debug, Deserialize)]
 struct CandidateRecord {
-    nom_ty: NominationType,
-    state_ab: StateAb,
-    ticket: TicketString,
-    ballot_position: BallotPosition,
-    surname: String,
-    ballot_given_nm: String,
-    party_ballot_nm: String,
+    pub nom_ty: NominationType,
+    pub state_ab: StateAb,
+    pub ticket: TicketString,
+    pub ballot_position: BallotPosition,
+    pub surname: String,
+    pub ballot_given_nm: String,
+    pub party_ballot_nm: String,
 }
 
 pub fn read_candidates<T>(candsfile: T) -> CandsData
@@ -323,7 +323,7 @@ where
 /// Specifically, the fields we care about.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct PartyRecord {
+pub struct PartyRecord {
     state_ab: StateAb,
     party_ab: String,
     registered_party_ab: String,
@@ -385,17 +385,20 @@ pub struct FilteredCandidate {
 impl fmt::Debug for FilteredCandidate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "FilteredCandidate {{\n  filter: {}\n  surname: {}\n  ballot_given_nm: {}\n  ballot_number: {}\n  party: {}\n  ticket: {}\n}}",
-            self.filter, self.surname, self.ballot_given_nm, self.ballot_number, self.party, self.ticket) // no semicolon here, we're returning
+            self.filter, self.surname, self.ballot_given_nm, self.ballot_number, self.party, self.ticket)
+        // no semicolon here, we're returning
     }
 }
 
 impl fmt::Display for FilteredCandidate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\n{}\n{}\n{}\n{}",
-            self.surname, self.ballot_given_nm, self.ballot_number, self.party, self.ticket) // no semicolon here, we're returning
+        write!(
+            f,
+            "{}\n{}\n{}\n{}\n{}",
+            self.surname, self.ballot_given_nm, self.ballot_number, self.party, self.ticket
+        ) // no semicolon here, we're returning
     }
 }
-
 
 pub fn filter_candidates(
     candsdict: CandsData,
@@ -439,12 +442,14 @@ pub fn filter_candidates(
                     }
                     if cands_matches[1] {
                         let s = filt.find(&cv.ballot_given_nm).unwrap();
-                        ballot_given_nm = term::decorate_range(&ballot_given_nm, s.range(), term::UNDERLINE);
+                        ballot_given_nm =
+                            term::decorate_range(&ballot_given_nm, s.range(), term::UNDERLINE);
                     }
                     if cands_matches[2] {
                         let bns = cv.ballot_number.to_string();
                         let s = filt.find(&bns).unwrap();
-                        ballot_number = term::decorate_range(&ballot_number, s.range(), term::UNDERLINE);
+                        ballot_number =
+                            term::decorate_range(&ballot_number, s.range(), term::UNDERLINE);
                     }
                     if cands_matches[3] {
                         let s = filt.find(&cv.party).unwrap();
@@ -463,7 +468,6 @@ pub fn filter_candidates(
                         party,
                         ticket,
                     });
-
                 } else {
                     data.push(FilteredCandidate {
                         filter: filt.to_string(),
@@ -473,7 +477,6 @@ pub fn filter_candidates(
                         party: cv.party.clone().to_string(),
                         ticket: tk.to_string(),
                     });
-
                 }
             }
         }
@@ -481,60 +484,68 @@ pub fn filter_candidates(
     return data;
 }
 
-
-
 /// Opens a file, possibly zipped, for reading.
 /// If the zipfile contains more than one file, the first will be returned.
 /// Performance note: has to unzip and return the entire file.
 pub fn open_csvz<T: 'static>(mut infile: T) -> Box<dyn Read>
-    where T: Read + Seek
+where
+    T: Read + Seek,
 {
     use std::io::Cursor;
-    if !is_zip(&mut infile){
+    if !is_zip(&mut infile) {
         return Box::new(infile);
     } else {
         let mut zippah = zip::ZipArchive::new(infile).expect("error establishing the ZIP");
         let mut zippy = zippah.by_index(0).expect("no file in ZIP");
         // sigh. We're going to need to just go ahead and read the entire thing into memory here
         let zs = zippy.size() as usize;
-        let mut bigbuf : Vec<u8> = Vec::with_capacity(zs);
-        zippy.read_to_end(&mut bigbuf).expect("Error reading all of the ZIP");
+        let mut bigbuf: Vec<u8> = Vec::with_capacity(zs);
+        zippy
+            .read_to_end(&mut bigbuf)
+            .expect("Error reading all of the ZIP");
         return Box::new(Cursor::new(bigbuf));
     }
 }
 
 /// opens blah.csv OR blah.zip
-pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read>{
+pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read> {
     use std::ffi::OsStr;
     if inpath.exists() && inpath.is_file() {
         return open_csvz(File::open(inpath).unwrap());
     } else {
-        let ext = inpath.extension().expect(&format!("Could not find {:#?} whether compressed or not", inpath.display()));
-        if ext == OsStr::new("csv"){
+        let ext = inpath.extension().expect(&format!(
+            "Could not find {:#?} whether compressed or not",
+            inpath.display()
+        ));
+        if ext == OsStr::new("csv") {
             let newpath = inpath.clone().with_extension("zip");
             return open_csvz(File::open(newpath).unwrap());
-        } else if ext ==  OsStr::new("csv"){
+        } else if ext == OsStr::new("csv") {
             let newpath = inpath.clone().with_extension("csv");
             return open_csvz(File::open(newpath).unwrap());
         } else {
-            panic!(format!("Could not find {:#?} whether compressed or not", inpath.display()));
+            panic!(format!(
+                "Could not find {:#?} whether compressed or not",
+                inpath.display()
+            ));
         }
     }
-
 }
-
 
 /// Peeks at the contents to check the magic number
 /// slightly adapted from zip-extensions
 /// to operate on a `Read+Seek` rather than a full `File`
 pub fn is_zip<T>(infile: &mut T) -> bool
-    where T: Read + Seek
+where
+    T: Read + Seek,
 {
     const ZIP_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
     let pos = infile.seek(SeekFrom::Current(0)).unwrap();
     let mut buffer: [u8; 4] = [0; 4];
     let bytes_read = infile.read(&mut buffer).unwrap();
-    infile.seek(Start(pos)).expect("couldn't seek back to the start after testing whether a file was a ZIP"); // revert
+    infile
+        .seek(Start(pos))
+        .expect("couldn't seek back to the start after testing whether a file was a ZIP"); // revert
     if bytes_read == buffer.len() && bytes_read == ZIP_SIGNATURE.len() {
         for i in 0..ZIP_SIGNATURE.len() {
             if buffer[i] != ZIP_SIGNATURE[i] {
@@ -546,7 +557,37 @@ pub fn is_zip<T>(infile: &mut T) -> bool
     return false;
 }
 
+/// Get a Writer to a file in a ZIP or die trying!
+/// Will create a ZIP file with a single inner file, named the same as the ZIP bar the extension.
+pub fn get_zip_writer_to_path(outpath: &path::Path, inner_ext: &str) -> zip::ZipWriter<File> {
+    let mut outfile = zip::ZipWriter::new(
+        File::create(&outpath.with_extension("zip")).expect("Couldn't create new output file"),
+    );
+    outfile
+        .start_file(
+            outpath
+                .with_extension(inner_ext)
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            zip::write::FileOptions::default(),
+        )
+        .unwrap();
+    outfile
+}
 
+// Credit to /u/Ophekkis
+// https://www.reddit.com/r/rust/comments/fyjmbv/n00b_question_how_to_get_user_input/fn0d5va/
+pub fn input(prompt: &str) -> io::Result<String> {
+    use std::io::{self, Write};
+    let mut stdout = io::stdout();
+    write!(&mut stdout, "{}", prompt)?;
+    stdout.flush()?;
+    let mut response = String::new();
+    io::stdin().read_line(&mut response)?;
+    Ok(response.trim().to_string())
+}
 
 #[cfg(test)]
 mod tests {

@@ -29,6 +29,7 @@ tabwriter = "1.2.1"
 ron = "0.5.1"
 url = "2.1.1"
 reqwest = {version = "0.10.4", features = ["blocking", "gzip", "brotli"]}
+glob = "0.3.0"
 
 [profile.release]
 debug = true

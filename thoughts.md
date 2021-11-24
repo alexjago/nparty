@@ -77,3 +77,40 @@ In particular:
  It could probably be faster, but also cache locality is a thing. So the conversion to ints should probably stay as one piece.
 
  Maybe we can do something with iterators?
+
+Conclusion: the entire thing gets done in like 5 seconds. Sufficiently fast for now. 
+
+## Updating data
+
+Ideally we shouldn't need to independently update anything, just do it all in a streaming fashion on-line. 
+
+That means we need to sniff formats somehow (`tree_magic`?), in a layered fashion: 
+
+- Is it a ZIP? If so, decode it to a string, wrap with io::Cursor. If not, return something that implements Read+Seek.
+- Test for whether and what kind of spreadsheet it is. If it's one that's not an xSV, in-memory convert it to CSV with `calamine` (write to another buffer I guess).
+- *Finally* pass that onto the main analysis bits. 
+
+## "Version 2.0" processing flow
+
+TL;DR: factor out the deserialisation, the setup analysis, and the per-row analysis. 
+
+Factored out deserialisation (especially with Serde making it so damn easy) effectively removes the need for a separate upgrade step. Just `.deserialize()`, do a minimal conversion, pass it in. 
+
+The per-row analysis, as factored out, actually doesn't need to know anything about the booth. It just needs to know: 
+
+- the pref data
+- relevant candidate indices
+- where BTLs start
+- what candidates are in what groups
+- an ordering on group-preferred sequences (i.e. 0:None, 1:Grn, 2:Alp, 3:Lnp, 4:GrnAlp, ...)
+
+And then it simply outputs a column index to increment. 
+
+(We can probably only parse relevant ints; even the BTL check can be done as a string comparison and it might well be faster... but also more fragile, what about whitespace etc?)
+
+## Floats and accuracy
+
+Sometimes there are slight differences between the Python and Rust output. I can only assume this is down to float errors. Concerning. 
+
+
+

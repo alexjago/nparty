@@ -6,12 +6,16 @@
 /// 3. scales (1) to fit [the totals of] (2)
 /// 4. splits (3) according to (2) where necessary
 /// 5. aggregates (4) by district
-
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::fs::create_dir_all;
+use std::path::Path;
 
-pub fn aggregate(sa1_prefs_path: &Path, sa1_districts_path: &Path, npp_dists_path: &Path, write_js: bool){
+pub fn aggregate(
+    sa1_prefs_path: &Path,
+    sa1_districts_path: &Path,
+    npp_dists_path: &Path,
+    write_js: bool,
+) {
     //! 1. Take SA1-by-SA1 NPP data from `sa1_prefs_path`
     //! 2. Take SA1 population & district split data from `sa1_districts_path`
     //! 3. Scale (1) to fit (2) [if 3rd & 4th columns exist in (2)]
@@ -22,15 +26,19 @@ pub fn aggregate(sa1_prefs_path: &Path, sa1_districts_path: &Path, npp_dists_pat
     println!("\tCombining SA1s into Districts");
 
     // 1. Load up SA1 NPP data
-    let mut sa1_prefs : BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    let mut sa1_prefs: BTreeMap<String, Vec<f64>> = BTreeMap::new();
 
-    let mut sp_rdr = csv::ReaderBuilder::new().flexible(true).has_headers(true).from_path(sa1_prefs_path).unwrap();
-    for record in sp_rdr.records(){
+    let mut sp_rdr = csv::ReaderBuilder::new()
+        .flexible(true)
+        .has_headers(true)
+        .from_path(sa1_prefs_path)
+        .unwrap();
+    for record in sp_rdr.records() {
         let row = record.unwrap();
         let id = row.get(0).unwrap().clone();
         let mut numbers = Vec::with_capacity(row.len() - 1);
-        for i in 1..row.len(){
-            let x : f64 = match row.get(i).unwrap().parse::<f64>() {
+        for i in 1..row.len() {
+            let x: f64 = match row.get(i).unwrap().parse::<f64>() {
                 Ok(x) => x,
                 Err(_) => 0.0_f64,
             };
@@ -39,14 +47,17 @@ pub fn aggregate(sa1_prefs_path: &Path, sa1_districts_path: &Path, npp_dists_pat
         sa1_prefs.insert(id.to_string(), numbers);
     }
 
-
     // 2. Load up SA1 to district data
 
-    let mut districts : BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    let mut districts: BTreeMap<String, Vec<f64>> = BTreeMap::new();
 
-    let mut sd_rdr = csv::ReaderBuilder::new().flexible(true).has_headers(true).from_path(sa1_districts_path).unwrap();
+    let mut sd_rdr = csv::ReaderBuilder::new()
+        .flexible(true)
+        .has_headers(true)
+        .from_path(sa1_districts_path)
+        .unwrap();
 
-    for record in sd_rdr.records(){
+    for record in sd_rdr.records() {
         let row = record.unwrap();
 
         if row.len() < 2 {
@@ -56,9 +67,8 @@ pub fn aggregate(sa1_prefs_path: &Path, sa1_districts_path: &Path, npp_dists_pat
         let id = row.get(0).unwrap();
         let dist = row.get(1).unwrap();
 
-
-        if !sa1_prefs.contains_key(id){
-            continue
+        if !sa1_prefs.contains_key(id) {
+            continue;
         }
 
         // 3. Scale (1) to fit (2)
@@ -84,7 +94,7 @@ pub fn aggregate(sa1_prefs_path: &Path, sa1_districts_path: &Path, npp_dists_pat
 
         // 5. Aggregates (4) by district.
 
-        if districts.contains_key(dist){
+        if districts.contains_key(dist) {
             let dist_npps = districts.get_mut(dist).unwrap();
             for j in 0..sa1_npps.len() {
                 dist_npps[j] += sa1_npps[j] * multiplier;
@@ -96,7 +106,6 @@ pub fn aggregate(sa1_prefs_path: &Path, sa1_districts_path: &Path, npp_dists_pat
             }
             districts.insert(dist.to_string(), dist_npps);
         }
-
     }
     // println!("{:#?}", districts);
 
@@ -109,19 +118,23 @@ pub fn aggregate(sa1_prefs_path: &Path, sa1_districts_path: &Path, npp_dists_pat
 
     let mut header = vec![String::from("District")];
     let sp_headers = sp_rdr.headers().unwrap();
-    for i in 1..sp_headers.len(){
+    for i in 1..sp_headers.len() {
         header.push(sp_headers.get(i).unwrap().to_string());
     }
 
-    dist_wtr.write_record(header).expect("error writing npp_dists header");
+    dist_wtr
+        .write_record(header)
+        .expect("error writing npp_dists header");
 
-    for (id, row) in districts.iter(){
+    for (id, row) in districts.iter() {
         let mut out: Vec<String> = Vec::with_capacity(outlen);
         out.push(id.clone());
         for i in row {
             out.push(i.to_string());
         }
-        dist_wtr.write_record(out).expect("error writing npp_dists line");
+        dist_wtr
+            .write_record(out)
+            .expect("error writing npp_dists line");
     }
 
     dist_wtr.flush().expect("error finalising npp_dists");
