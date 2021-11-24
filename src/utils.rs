@@ -524,10 +524,10 @@ pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read> {
             let newpath = inpath.clone().with_extension("csv");
             return open_csvz(File::open(newpath).unwrap());
         } else {
-            panic!(format!(
+            panic!(
                 "Could not find {:#?} whether compressed or not",
                 inpath.display()
-            ));
+            );
         }
     }
 }

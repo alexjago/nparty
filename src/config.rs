@@ -13,7 +13,10 @@ use toml_edit::*;
 
 use crate::booths::Parties;
 use crate::term::{BOLD, END};
-use crate::utils::{input, StateAb, ToStateAb, CandsData, read_candidates, read_party_abbrvs, FilteredCandidate, filter_candidates};
+use crate::utils::{
+    filter_candidates, input, read_candidates, read_party_abbrvs, CandsData, FilteredCandidate,
+    StateAb, ToStateAb,
+};
 
 // TODO: long term goals to get back to Python equivalent functionality
 // We will support a TOML setup that's otherwise consistent with Python's ConfigParser's
@@ -307,10 +310,9 @@ pub fn get_defaults(cfg: &Document) -> Result<Defaults, &'static str> {
         if scenario_key == "DEFAULT" {
             continue;
         }
-
     }
-    
-//    return Ok(out);
+
+    //    return Ok(out);
     todo!()
 }
 /// this function handles `nparty list`
@@ -367,7 +369,10 @@ pub struct KnownConfigOptions {
 /// Previously with `get_scenarios()` and `get_defaults()` we read them from a toml_edit::Document
 /// Then with `patch_scenarios()` we shall incorporate the new scenarios into an existing toml_edit::Document
 /// (and factor out a Defaults section)
-pub fn cli_scenarios(existing: &Option<Scenario>, candidates: &CandsData, known_options: KnownConfigOptions
+pub fn cli_scenarios(
+    existing: &Option<Scenario>,
+    candidates: &CandsData,
+    known_options: KnownConfigOptions,
 ) -> Result<BTreeMap<String, Scenario>, String> {
     //let mut out = BTreeMap::new();
 
@@ -392,7 +397,6 @@ pub fn cli_scenarios(existing: &Option<Scenario>, candidates: &CandsData, known_
         // scenario code
         let mut scen_code = String::new();
 
-
         // out.insert(scen_code, scenario);
         // go again?
         new_scen = input("Define another new Scenario? [Y]/n: ")
@@ -400,6 +404,6 @@ pub fn cli_scenarios(existing: &Option<Scenario>, candidates: &CandsData, known_
             .to_uppercase();
     }
 
-//    Ok(out)
+    //    Ok(out)
     todo!()
 }

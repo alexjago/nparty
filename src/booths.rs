@@ -379,7 +379,8 @@ pub fn booth_npps(
         for (p, cns) in groups_which.iter() {
             let mut curbest: usize = cands_count; // this heavily reduced HashMapping
             for i in cns {
-                let bal = match record.get(i + atl_start - 1) { // always check: is this the right offset?
+                let bal = match record.get(i + atl_start - 1) {
+                    // always check: is this the right offset?
                     Some(x) => match x.trim().parse::<usize>() {
                         Ok(n) => n,
                         Err(_) => continue,
@@ -413,14 +414,15 @@ pub fn booth_npps(
 
         // progress!
         progress += 1;
-        if progress % 10000 == 0 { // normally 100K
+        if progress % 10000 == 0 {
+            // normally 100K
             eprintln!(
                 "\t\tPreferencing progress: {} ballots", // normally a leading {}
                 //term::TTYJUMP,
                 progress
             );
-	eprintln!("{:#?}", &record);
-	eprintln!("{:?}\t{}", &bests, &combinations[pref_idx]);
+            eprintln!("{:#?}", &record);
+            eprintln!("{:?}\t{}", &bests, &combinations[pref_idx]);
         }
     }
 
