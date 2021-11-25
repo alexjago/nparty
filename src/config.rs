@@ -66,7 +66,7 @@ pub struct Scenario {
 }
 
 /// Get all the Scenarios, with defaults suitably propogated and paths ready to use!
-/// This function can panic.
+/// This function can panic (but shouldn't).
 pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'static str> {
     let mut out: BTreeMap<String, Scenario> = BTreeMap::new();
     let cfg = cfg.as_table();

@@ -1,8 +1,8 @@
+/// This file exists to contain format conversions
 use crate::utils::*;
 use csv;
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom, Write};
-/// This file exists to contain format conversions
 use std::result::Result;
 
 // The candidate file format is sufficiently unchanged
@@ -65,7 +65,7 @@ pub fn upgrade_prefs_16_19(
     let mut state: StateAb;
     let mut statestring = String::new();
 
-    // big optimisation! https://blog.burntsushi.net/csv/#amortizing-allocations
+    // potential big optimisation? https://blog.burntsushi.net/csv/#amortizing-allocations
 
     for row in inrdr.deserialize() {
         let old: OldRow = row.unwrap();

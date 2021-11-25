@@ -1,13 +1,15 @@
-/// Conversion of `SA1s_Aggregator.py`
-
-/// Step-by-step:
-/// 1. takes SA1-by-SA1 NPP data
-/// 2. takes SA1 population & district split data
-/// 3. scales (1) to fit [the totals of] (2)
-/// 4. splits (3) according to (2) where necessary
-/// 5. aggregates (4) by district
-use std::collections::BTreeMap;
-use std::fs::create_dir_all;
+use serde_json::json;
+/**
+Conversion of `SA1s_Aggregator.py`
+Step-by-step:
+1. takes SA1-by-SA1 NPP data
+2. takes SA1 population & district split data
+3. scales (1) to fit [the totals of] (2)
+4. splits (3) according to (2) where necessary
+5. aggregates (4) by district
+*/
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::{create_dir_all, File};
 use std::path::Path;
 
 pub fn aggregate(
@@ -15,6 +17,7 @@ pub fn aggregate(
     sa1_districts_path: &Path,
     npp_dists_path: &Path,
     write_js: bool,
+    parties: &BTreeMap<String, Vec<String>>,
 ) {
     //! 1. Take SA1-by-SA1 NPP data from `sa1_prefs_path`
     //! 2. Take SA1 population & district split data from `sa1_districts_path`
@@ -32,7 +35,7 @@ pub fn aggregate(
         .flexible(true)
         .has_headers(true)
         .from_path(sa1_prefs_path)
-        .unwrap();
+        .expect("Could not find SA1s preferences file!");
     for record in sp_rdr.records() {
         let row = record.unwrap();
         let id = row.get(0).unwrap().clone();
@@ -50,12 +53,13 @@ pub fn aggregate(
     // 2. Load up SA1 to district data
 
     let mut districts: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    let mut seen_sa1s: BTreeSet<String> = BTreeSet::new();
 
     let mut sd_rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .has_headers(true)
         .from_path(sa1_districts_path)
-        .unwrap();
+        .expect("Could not find SA1s to districts correspondence file");
 
     for record in sd_rdr.records() {
         let row = record.unwrap();
@@ -64,8 +68,8 @@ pub fn aggregate(
             continue;
         }
 
-        let id = row.get(0).unwrap();
-        let dist = row.get(1).unwrap();
+        let id = row.get(0).unwrap().trim();
+        let dist = row.get(1).unwrap().trim();
 
         if !sa1_prefs.contains_key(id) {
             continue;
@@ -90,8 +94,16 @@ pub fn aggregate(
             } else {
                 multiplier = sa1_pop / sa1_total;
             }
+        } else {
+            // What happens if there are SA1 splits but we don't have info?
+            // Hack: just allocate to whichever was seen first for now
+            let sa1 = id.to_string();
+            if seen_sa1s.contains(&sa1) {
+                continue;
+            } else {
+                seen_sa1s.insert(sa1);
+            }
         }
-
         // 5. Aggregates (4) by district.
 
         if districts.contains_key(dist) {
@@ -111,31 +123,50 @@ pub fn aggregate(
 
     // 6. Output to `npp_dists_path`
 
-    let outlen = districts.len();
-
     create_dir_all(sa1_prefs_path.parent().unwrap()).unwrap();
+
+    // 6.a CSV
+
     let mut dist_wtr = csv::Writer::from_path(npp_dists_path).unwrap();
 
     let mut header = vec![String::from("District")];
     let sp_headers = sp_rdr.headers().unwrap();
-    for i in 1..sp_headers.len() {
-        header.push(sp_headers.get(i).unwrap().to_string());
+    for i in sp_headers.iter().skip(1) {
+        header.push(i.to_string());
     }
+    eprintln!("{:?}", header);
 
     dist_wtr
-        .write_record(header)
+        .write_record(&header)
         .expect("error writing npp_dists header");
 
     for (id, row) in districts.iter() {
-        let mut out: Vec<String> = Vec::with_capacity(outlen);
+        let mut out: Vec<String> = Vec::with_capacity(header.len());
         out.push(id.clone());
         for i in row {
             out.push(i.to_string());
         }
+        eprintln!("{:?}", out);
         dist_wtr
             .write_record(out)
             .expect("error writing npp_dists line");
     }
 
     dist_wtr.flush().expect("error finalising npp_dists");
+
+    // 6.b JS
+    if write_js {
+        // format: {parties : {abbr: full name}, field_names: [], data: {district: [values]}}
+        // note that data is our Districts variable
+        // and field_names are just the header (well, skipping the district column)
+        // and, well, parties are parties
+        let out = json!({
+            "parties": parties, // empty for now
+            "field_names": header[1..],
+            "data": districts
+        });
+        let json_path = npp_dists_path.with_extension("json");
+        let json_file = File::create(json_path).expect("Error creating SA1s aggregate JSON file");
+        serde_json::to_writer(json_file, &out).expect("Error writing SA1s aggregate JSON file");
+    }
 }

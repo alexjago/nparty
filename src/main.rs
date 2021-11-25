@@ -146,6 +146,7 @@ fn run(sm: &clap::ArgMatches) {
                 scenario.sa1s_dists.as_ref().unwrap(),
                 scenario.npp_dists.as_ref().unwrap(),
                 sm.is_present("js"),
+                &scenario.groups,
             );
         } else {
             // run all phases
@@ -172,6 +173,7 @@ fn run(sm: &clap::ArgMatches) {
                     scenario.sa1s_dists.as_ref().unwrap(),
                     scenario.npp_dists.as_ref().unwrap(),
                     sm.is_present("js"),
+                    &scenario.groups,
                 );
             }
         }
