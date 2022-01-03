@@ -1,13 +1,13 @@
+//! Conversion of `SA1s_Aggregator.py`
+//!
+//! Step-by-step:
+//! 1. takes SA1-by-SA1 NPP data
+//! 2. takes SA1 population & district split data
+//! 3. scales (1) to fit [the totals of] (2)
+//! 4. splits (3) according to (2) where necessary
+//! 5. aggregates (4) by district
+
 use serde_json::json;
-/**
-Conversion of `SA1s_Aggregator.py`
-Step-by-step:
-1. takes SA1-by-SA1 NPP data
-2. takes SA1 population & district split data
-3. scales (1) to fit [the totals of] (2)
-4. splits (3) according to (2) where necessary
-5. aggregates (4) by district
-*/
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{create_dir_all, File};
 use std::path::Path;

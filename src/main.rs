@@ -1,33 +1,32 @@
 /// nparty: N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis.  
-/// Copyright (C) 2017-2020  Alex Jago <abjago@abjago.net>.
+/// Copyright (C) 2017-2022  Alex Jago <abjago@abjago.net>.
 /// Released under the MIT or Apache-2.0 licenses, at your option.
 extern crate csv;
 #[macro_use]
 extern crate serde_derive;
 extern crate ansi_term;
-extern crate unicode_segmentation;
-#[macro_use]
-extern crate maplit;
 extern crate atty;
-extern crate factorial;
-extern crate itertools;
-extern crate zip;
-extern crate zip_extensions;
-#[macro_use]
 extern crate clap;
-extern crate toml_edit;
-#[macro_use]
-extern crate lazy_static;
+extern crate factorial;
 extern crate glob;
+extern crate itertools;
 extern crate ron;
 extern crate tabwriter;
+extern crate toml_edit;
+extern crate unicode_segmentation;
 extern crate url;
+extern crate zip;
+extern crate zip_extensions;
 
 use clap::{load_yaml, App};
+use config::{KnownConfigOptions, Scenario};
+use utils::ToStateAb;
 
-use std::ffi::{OsStr, OsString};
-use std::fs::{read_dir, File};
+use std::collections::BTreeMap;
+use std::ffi::OsStr;
+use std::fs::{metadata, File};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 mod aggregator;
 mod booths;
@@ -78,6 +77,10 @@ fn main() {
         } else {
             todo!();
         }
+    } else if let Some(sm) = m.subcommand_matches("configure") {
+        do_configure(sm);
+    } else {
+        unimplemented!();
     }
 }
 
@@ -190,10 +193,6 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) {
     let suffix: &OsStr = sm.value_of_os("suffix").unwrap();
     let filter: &str = sm.value_of("filter").unwrap();
 
-    // TODO: era sniffing
-
-    // todo: work for directories
-
     let mut paths: Vec<(PathBuf, PathBuf)> = Vec::new();
 
     if inpath.is_dir() {
@@ -255,11 +254,95 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) {
 
         eprintln!("ipath: {} \t opath: {}", ipath.display(), opath.display());
 
-        upgrades::upgrade_prefs_16_19(
-            &mut utils::open_csvz_from_path(&ipath),
-            &mut utils::get_zip_writer_to_path(&opath, "csv"),
-            &candsdata,
-            &divstates,
-        );
+        let era = upgrades::era_sniff(&mut utils::open_csvz_from_path(&ipath))
+            .expect("Error determining era of input.");
+
+        if era == 2016 {
+            // Test if upgrade already exists
+            let im = metadata(&ipath).expect("In-path doesn't seem to exist?");
+            let om = metadata(&opath);
+            let otime = om.as_ref().map_or(SystemTime::UNIX_EPOCH, |x| {
+                x.modified().unwrap_or(SystemTime::UNIX_EPOCH)
+            });
+            let itime = im.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+            if otime > itime {
+                // todo: consider testing it's the correct era
+                eprintln!("Upgrade already exists; skipping");
+                continue;
+            } else {
+                eprintln!("Upgrading...");
+                upgrades::upgrade_prefs_16_19(
+                    &mut utils::open_csvz_from_path(&ipath),
+                    &mut utils::get_zip_writer_to_path(&opath, "csv"),
+                    &candsdata,
+                    &divstates,
+                );
+            }
+        } else {
+            eprintln!("No upgrade available - is it already the latest?");
+        }
     }
+}
+
+fn do_configure(sm: &clap::ArgMatches) {
+    // requireds
+    let candspath = Path::new(
+        sm.value_of_os("candidates")
+            .expect("Error with candidates-file path."),
+    );
+    let outpath = Path::new(
+        sm.value_of_os("configfile")
+            .expect("Error with output path."),
+    );
+
+    // (semi)optionals
+    let _datadir = sm
+        .value_of_os("data_dir")
+        .and_then(|x| Some(PathBuf::from(x)));
+    let _distdir = sm
+        .value_of_os("dist_dir")
+        .and_then(|x| Some(PathBuf::from(x)));
+    let from_scen = sm.value_of_os("from").and_then(|x| Some(PathBuf::from(x)));
+    let output_dir = sm
+        .value_of_os("output_dir")
+        .and_then(|x| Some(PathBuf::from(x)));
+    let party_details = sm
+        .value_of_os("party_details")
+        .and_then(|x| Some(PathBuf::from(x)));
+    let polling_places = sm
+        .value_of_os("polling_places")
+        .and_then(|x| Some(PathBuf::from(x)));
+    let sa1s_breakdown = sm
+        .value_of_os("sa1s_breakdown")
+        .and_then(|x| Some(PathBuf::from(x)));
+    let year = sm.value_of("year").and_then(|x| Some(String::from(x)));
+    let state = sm.value_of("state").and_then(|x| Some(x.to_state_ab()));
+
+    let kco = KnownConfigOptions {
+        sa1s_dists: None,
+        prefs_path: None,
+        output_dir,
+        party_details,
+        polling_places,
+        sa1s_breakdown,
+        year,
+        state,
+    };
+
+    let existings: BTreeMap<String, Scenario> = match from_scen {
+        Some(p) => config::get_scenarios(&config::get_cfg_doc_from_path(&p)).expect("le what"),
+        None => BTreeMap::new(),
+    };
+
+    let existing = existings.values().next();
+
+    let candsfile = File::open(candspath).expect("Error opening candidates file");
+    let candidates = utils::read_candidates(candsfile);
+
+    let out =
+        config::cli_scenarios(existing, &candidates, &kco).expect("Error creating configuration");
+    eprintln!("{:#?}", out);
+
+    let mut outfile = File::create(outpath).expect("Error opening configuration file for writing");
+    config::write_scenarios(out, &mut outfile).expect("Error writing configuration file");
 }

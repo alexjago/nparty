@@ -1,11 +1,9 @@
 use std::path::{Path, PathBuf};
-// use atty;
 use std::collections::{BTreeMap, HashMap};
-// use maplit;
 use reqwest;
 use ron;
 use std::fs::{create_dir_all, write, File};
-use std::io::{copy, Error, Result, Write};
+use std::io::Write;
 use url;
 
 // TODO: calamine for conversions...

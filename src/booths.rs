@@ -6,16 +6,17 @@ use itertools::Itertools;
 ///    of each of the parties. For example, for four parties there are 65 orderings:
 ///   (0!) + (4 * 1!) + (6 * 2!) + (4 * 3!) + (4!)
 use std::collections::{BTreeMap, HashMap};
-use std::fs::{create_dir_all, File};
+use std::fs::create_dir_all;
 use std::path::Path;
 
 use super::term;
 use super::utils::*;
 
-const NPP_FIELD_NAMES: [&str; 5] = ["ID", "Division", "Booth", "Latitude", "Longitude"]; // for the output
-                                                                                         // const BOOTH_FIELD_NAMES :[&str; 15] = ["State", "DivisionID", "DivisionNm", "PollingPlaceID", "PollingPlaceTypeID", "PollingPlaceNm",
-                                                                                         //                               "PremisesNm", "PremisesAddress1", "PremisesAddress2", "PremisesAddress3", "PremisesSuburb",
-                                                                                         //                               "PremisesStateAb", "PremisesPostCode", "Latitude", "Longitude"];
+const NPP_FIELD_NAMES: [&str; 5] = ["ID", "Division", "Booth", "Latitude", "Longitude"];
+// for the output
+// const BOOTH_FIELD_NAMES :[&str; 15] = ["State", "DivisionID", "DivisionNm", "PollingPlaceID", "PollingPlaceTypeID", "PollingPlaceNm",
+//                               "PremisesNm", "PremisesAddress1", "PremisesAddress2", "PremisesAddress3", "PremisesSuburb",
+//                               "PremisesStateAb", "PremisesPostCode", "Latitude", "Longitude"];
 const PREFS_FIELD_NAMES: [&str; 6] = [
     "State",
     "Division",
@@ -50,16 +51,6 @@ pub fn factsum(input: usize) -> usize {
     let mut output: usize = 0;
     for i in 1..=input {
         output += i.factorial();
-    }
-    return output;
-}
-
-/// Returns [groups! / i! where i = 0..=groups]
-fn make_combo_levels(groups: usize) -> Vec<usize> {
-    let mut output: Vec<usize> = Vec::with_capacity(groups + 1);
-    let gg = groups.factorial();
-    for i in 0..=groups {
-        output.push(gg / i.factorial())
     }
     return output;
 }
@@ -121,7 +112,7 @@ pub type DivBooth = (String, String);
 pub type Parties = BTreeMap<String, Vec<String>>;
 
 // TODO: make this take Read objects instead of paths.
-//       otherwise it'll never work as wasm.
+//       otherwise it'll never work in WASM.
 pub fn booth_npps(
     parties: &Parties,
     state: &StateAb,
@@ -298,7 +289,6 @@ pub fn booth_npps(
 
     // this is where we're going to store all the things
     let mut booth_counts: HashMap<DivBooth, Vec<usize>> = HashMap::new();
-    let mut bbooth_counts: HashMap<&str, HashMap<&str, Vec<usize>>> = HashMap::new();
 
     let mut division_specials: BTreeMap<DivBooth, Vec<usize>> = BTreeMap::new();
     // let mut ppids = HashMap::new();
@@ -414,11 +404,10 @@ pub fn booth_npps(
 
         // progress!
         progress += 1;
-        if progress % 10000 == 0 {
-            // normally 100K
+        if progress % 100000 == 0 {
             eprintln!(
-                "\t\tPreferencing progress: {} ballots", // normally a leading {}
-                //term::TTYJUMP,
+                "{}\t\tPreferencing progress: {} ballots", // normally a leading {}
+                ttyjump(),
                 progress
             );
             eprintln!("{:#?}", &record);
@@ -429,7 +418,7 @@ pub fn booth_npps(
     // and we are done with the main task!
     eprintln!(
         "{}\t\tPreferencing complete: {} ballots. ({} were BTL)",
-        term::TTYJUMP,
+        ttyjump(),
         progress,
         btl_count
     );
@@ -472,7 +461,7 @@ pub fn booth_npps(
         .from_path(npp_booths_path)
         .unwrap();
 
-    let mut npp_header = &mut NPP_FIELD_NAMES.to_vec();
+    let npp_header = &mut NPP_FIELD_NAMES.to_vec();
     for i in combinations.iter() {
         npp_header.push(i.as_str());
     }

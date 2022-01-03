@@ -1,11 +1,11 @@
 // use log;
+use inflector::cases::titlecase::to_title_case;
 use regex;
 use std::char;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{stdin, stdout, Cursor, Read, Seek, SeekFrom, Write};
 use std::path;
 use zip;
 
@@ -112,7 +112,8 @@ impl PrettifyNumber for BallotNumber {
 // The Rusty way is to define a struct for what gets returned, which seems eminently sensible
 // we might need several things
 
-#[derive(PartialEq, Eq, Hash, Debug, Deserialize, Copy, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Copy, Clone, enum_utils::FromStr)]
+#[enumeration(case_insensitive)]
 pub enum StateAb {
     ACT,
     NSW,
@@ -178,7 +179,7 @@ impl fmt::Display for NominationType {
 
 /// Define a candidate's data.
 /// `surname` and `ballot_given_nm` and `party` should all be straightforward.
-/// `ballot_number` represents a defined ordering for all [pseudo]candidates on the ballot.
+/// `ballot_number` represents a defined ordering for all (pseudo)candidates on the ballot.
 /// All ticket votes, starting with A=1, then the candidates of A going down the ballot paper,
 /// and finally all the ungrouped (UG) candidates.
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -212,7 +213,7 @@ struct CandidateRecord {
 
 pub fn read_candidates<T>(candsfile: T) -> CandsData
 where
-    T: io::Read,
+    T: Read,
 {
     let mut bigdict = CandsData::new();
 
@@ -275,7 +276,7 @@ where
                 Candidate {
                     surname: cand_record.surname,
                     ballot_given_nm: cand_record.ballot_given_nm,
-                    ballot_number: 0, // we will update this soon
+                    ballot_number: 0, // we will update this below
                     party: cand_record.party_ballot_nm.clone(),
                 },
             );
@@ -336,7 +337,7 @@ pub type PartyData = HashMap<String, String>;
 /// -> {(party name on ballot | party abbreviation) : party abbreviation}
 pub fn read_party_abbrvs<T>(partyfile: T) -> PartyData
 where
-    T: io::Read,
+    T: Read,
 {
     let mut bigdict = PartyData::new();
 
@@ -350,14 +351,14 @@ where
     for result in rdr.deserialize() {
         rowcounter += 1;
         if rowcounter <= 2 {
-            continue;
+            continue; // skip useless metadata starter rows
         }
         let pr: PartyRecord = result.unwrap();
 
         if pr.registered_party_ab != "" {
-            bigdict.insert(pr.registered_party_ab, pr.party_ab.clone());
+            bigdict.insert(pr.registered_party_ab, to_title_case(&pr.party_ab));
         }
-        bigdict.insert(pr.party_nm, pr.party_ab);
+        bigdict.insert(pr.party_nm, to_title_case(&pr.party_ab));
     }
 
     return bigdict;
@@ -372,24 +373,25 @@ where
 // OK and then we need some regex crap
 // Also this did very different things depending on whether it was a TTY.
 
-#[derive(PartialEq, Eq, Hash)]
 pub struct FilteredCandidate {
-    filter: String,
-    surname: String,
-    ballot_given_nm: String,
-    ballot_number: String,
-    party: String,
-    ticket: String,
+    filter: regex::Regex,
+    pub surname: String,
+    pub ballot_given_nm: String,
+    pub ballot_number: String,
+    pub party: String,
+    pub ticket: String,
+    cands_matches: [bool; 5],
 }
 
 impl fmt::Debug for FilteredCandidate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "FilteredCandidate {{\n  filter: {}\n  surname: {}\n  ballot_given_nm: {}\n  ballot_number: {}\n  party: {}\n  ticket: {}\n}}",
-            self.filter, self.surname, self.ballot_given_nm, self.ballot_number, self.party, self.ticket)
+        write!(f, "FilteredCandidate {{\n  filter: {}\n  surname: {}\n  ballot_given_nm: {}\n  ballot_number: {}\n  party: {}\n  ticket: {}\n  matches: {:?}\n}}",
+            self.filter, self.surname, self.ballot_given_nm, self.ballot_number, self.party, self.ticket, self.cands_matches)
         // no semicolon here, we're returning
     }
 }
 
+///
 impl fmt::Display for FilteredCandidate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -400,11 +402,45 @@ impl fmt::Display for FilteredCandidate {
     }
 }
 
+impl FilteredCandidate {
+    pub fn fmt_tty(&self) -> String {
+        let mut surname = self.surname.clone();
+        let mut ballot_given_nm = self.ballot_given_nm.clone();
+        let mut ballot_number = self.ballot_number.clone();
+        let mut party = self.party.clone();
+        let mut ticket = self.ticket.clone();
+
+        if self.cands_matches[0] {
+            let s = self.filter.find(&self.surname).unwrap();
+            surname = term::decorate_range(&surname, s.range(), term::UNDERLINE);
+        }
+        if self.cands_matches[1] {
+            let s = self.filter.find(&self.ballot_given_nm).unwrap();
+            ballot_given_nm = term::decorate_range(&ballot_given_nm, s.range(), term::UNDERLINE);
+        }
+        if self.cands_matches[2] {
+            let s = self.filter.find(&self.ballot_number).unwrap();
+            ballot_number = term::decorate_range(&ballot_number, s.range(), term::UNDERLINE);
+        }
+        if self.cands_matches[3] {
+            let s = self.filter.find(&self.party).unwrap();
+            party = term::decorate_range(&party, s.range(), term::UNDERLINE);
+        }
+        if self.cands_matches[4] {
+            let s = self.filter.find(&self.ticket).unwrap();
+            ticket = term::decorate_range(&ticket, s.range(), term::UNDERLINE);
+        }
+        format!(
+            "{}\t{}\t{}\t{}\t{}",
+            surname, ballot_given_nm, ballot_number, party, ticket
+        ) // no semicolon here, we're returning
+    }
+}
+
 pub fn filter_candidates(
-    candsdict: CandsData,
-    state: StateAb,
-    filter: String,
-    tty: bool,
+    candsdict: &CandsData,
+    state: &StateAb,
+    filter: &String,
 ) -> Vec<FilteredCandidate> {
     let mut data = Vec::new();
     let filt = regex::RegexBuilder::new(&filter)
@@ -414,7 +450,6 @@ pub fn filter_candidates(
     for (tk, cands) in candsdict.get(&state).unwrap().iter() {
         for (_balnum, cv) in cands.iter() {
             // OK, field by field
-            // later, when we care about `tty`, we'll add in stuff for `find` too.
             let mut cands_matches = [false; 5];
             cands_matches[0] = filt.is_match(&cv.surname);
             cands_matches[1] = filt.is_match(&cv.ballot_given_nm);
@@ -425,64 +460,25 @@ pub fn filter_candidates(
             let any_match: bool = cands_matches.iter().fold(false, |acc, x| (acc | x));
 
             let disregard_if_ticket_literal =
-                candsdict.get(&state).unwrap().contains_key(&filter) & !(&filter == tk);
+                candsdict.get(&state).unwrap().contains_key(filter) & !(filter == tk);
+            // disregard filters that exactly specify OTHER ticket literals
             if any_match & !disregard_if_ticket_literal {
-                // at this point we would care about tty
-
-                if tty {
-                    let mut surname = cv.surname.clone().to_string();
-                    let mut ballot_given_nm = cv.ballot_given_nm.clone().to_string();
-                    let mut ballot_number = cv.ballot_number.clone().to_string();
-                    let mut party = cv.party.clone().to_string();
-                    let mut ticket = tk.clone().to_string();
-
-                    if cands_matches[0] {
-                        let s = filt.find(&cv.surname).unwrap();
-                        surname = term::decorate_range(&surname, s.range(), term::UNDERLINE);
-                    }
-                    if cands_matches[1] {
-                        let s = filt.find(&cv.ballot_given_nm).unwrap();
-                        ballot_given_nm =
-                            term::decorate_range(&ballot_given_nm, s.range(), term::UNDERLINE);
-                    }
-                    if cands_matches[2] {
-                        let bns = cv.ballot_number.to_string();
-                        let s = filt.find(&bns).unwrap();
-                        ballot_number =
-                            term::decorate_range(&ballot_number, s.range(), term::UNDERLINE);
-                    }
-                    if cands_matches[3] {
-                        let s = filt.find(&cv.party).unwrap();
-                        party = term::decorate_range(&party, s.range(), term::UNDERLINE);
-                    }
-                    if cands_matches[4] {
-                        let s = filt.find(&tk).unwrap();
-                        ticket = term::decorate_range(&ticket, s.range(), term::UNDERLINE);
-                    }
-
-                    data.push(FilteredCandidate {
-                        filter: filt.to_string(),
-                        surname,
-                        ballot_given_nm,
-                        ballot_number,
-                        party,
-                        ticket,
-                    });
-                } else {
-                    data.push(FilteredCandidate {
-                        filter: filt.to_string(),
-                        surname: cv.surname.clone(),
-                        ballot_given_nm: cv.ballot_given_nm.clone(),
-                        ballot_number: cv.ballot_number.clone().to_string(),
-                        party: cv.party.clone().to_string(),
-                        ticket: tk.to_string(),
-                    });
-                }
+                data.push(FilteredCandidate {
+                    filter: filt.clone(),
+                    surname: cv.surname.clone(),
+                    ballot_given_nm: cv.ballot_given_nm.clone(),
+                    ballot_number: cv.ballot_number.clone().to_string(),
+                    party: cv.party.clone().to_string(),
+                    ticket: tk.to_string(),
+                    cands_matches: cands_matches.clone(),
+                });
             }
         }
     }
     return data;
 }
+
+trait ReadSeek: Read + Seek {}
 
 /// Opens a file, possibly zipped, for reading.
 /// If the zipfile contains more than one file, the first will be returned.
@@ -491,19 +487,16 @@ pub fn open_csvz<T: 'static>(mut infile: T) -> Box<dyn Read>
 where
     T: Read + Seek,
 {
-    use std::io::Cursor;
     if !is_zip(&mut infile) {
-        return Box::new(infile);
+        Box::new(infile)
     } else {
         let mut zippah = zip::ZipArchive::new(infile).expect("error establishing the ZIP");
         let mut zippy = zippah.by_index(0).expect("no file in ZIP");
         // sigh. We're going to need to just go ahead and read the entire thing into memory here
         let zs = zippy.size() as usize;
         let mut bigbuf: Vec<u8> = Vec::with_capacity(zs);
-        zippy
-            .read_to_end(&mut bigbuf)
-            .expect("Error reading all of the ZIP");
-        return Box::new(Cursor::new(bigbuf));
+        zippy.read_to_end(&mut bigbuf).expect("Error reading ZIP");
+        Box::new(Cursor::new(bigbuf))
     }
 }
 
@@ -518,10 +511,10 @@ pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read> {
             inpath.display()
         ));
         if ext == OsStr::new("csv") {
-            let newpath = inpath.clone().with_extension("zip");
+            let newpath = (*inpath.clone()).with_extension("zip");
             return open_csvz(File::open(newpath).unwrap());
         } else if ext == OsStr::new("csv") {
-            let newpath = inpath.clone().with_extension("csv");
+            let newpath = (*inpath.clone()).with_extension("csv");
             return open_csvz(File::open(newpath).unwrap());
         } else {
             panic!(
@@ -579,13 +572,12 @@ pub fn get_zip_writer_to_path(outpath: &path::Path, inner_ext: &str) -> zip::Zip
 
 // Credit to /u/Ophekkis
 // https://www.reddit.com/r/rust/comments/fyjmbv/n00b_question_how_to_get_user_input/fn0d5va/
-pub fn input(prompt: &str) -> io::Result<String> {
-    use std::io::{self, Write};
-    let mut stdout = io::stdout();
+pub fn input(prompt: &str) -> std::io::Result<String> {
+    let mut stdout = stdout();
     write!(&mut stdout, "{}", prompt)?;
     stdout.flush()?;
     let mut response = String::new();
-    io::stdin().read_line(&mut response)?;
+    stdin().read_line(&mut response)?;
     Ok(response.trim().to_string())
 }
 

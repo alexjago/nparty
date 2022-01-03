@@ -1,21 +1,21 @@
+//! This file translates Configuration.py
+//! Generation and loading of configuration files.
+
 use atty;
 use itertools::Itertools;
-use regex::{Regex, RegexBuilder};
-use std::collections::{BTreeMap, HashMap};
-use std::fs::{read_to_string, File, OpenOptions};
-use std::io::{Read, Write};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::read_to_string;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::result::Result;
 use tabwriter::TabWriter;
-/// This file translates Configuration.py
-/// Generation and loading of configuration files.
 use toml_edit::*;
 
 use crate::booths::Parties;
 use crate::term::{BOLD, END};
 use crate::utils::{
-    filter_candidates, input, read_candidates, read_party_abbrvs, CandsData, FilteredCandidate,
-    StateAb, ToStateAb,
+    filter_candidates, input, open_csvz_from_path, read_party_abbrvs, CandsData,
+    FilteredCandidate, StateAb, ToStateAb,
 };
 
 // TODO: long term goals to get back to Python equivalent functionality
@@ -33,11 +33,11 @@ use crate::utils::{
 // We're keeping defaults though.
 
 /// Quickly dump a configuration from a file
-pub fn cfgdump(cfgpath: &Path) {
-    // load 'er up
-    let doc = get_cfg_doc_from_path(cfgpath);
-    println!("{:#?}", doc.as_table());
-}
+// pub fn cfgdump(cfgpath: &Path) {
+//     // load 'er up
+//     let doc = get_cfg_doc_from_path(cfgpath);
+//     println!("{:#?}", doc.as_table());
+// }
 
 /// Does what it says on the tin (or at least, the function signature).
 /// Will panic with relevant error messages if something goes wrong.  
@@ -48,7 +48,7 @@ pub fn get_cfg_doc_from_path(cfgpath: &Path) -> Document {
         .expect("Error parsing config file")
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Scenario {
     pub name: String,
     pub year: String,
@@ -285,36 +285,12 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
     return Ok(out);
 }
 
-pub struct Defaults {
-    pub scen_items: Scenario,
-    pub data_dir: Option<PathBuf>,
-    pub dist_dir: Option<PathBuf>,
-}
+// pub struct Defaults {
+//     pub scen_items: Scenario,
+//     pub data_dir: Option<PathBuf>,
+//     pub dist_dir: Option<PathBuf>,
+// }
 
-pub fn get_defaults(cfg: &Document) -> Result<Defaults, &'static str> {
-    let mut out: Defaults;
-    let mut scen_items: Scenario;
-    let cfg = cfg.as_table();
-
-    // We pop the contents of [DEFAULT] into a HashMap to avoid existence failure
-    let mut defaults: HashMap<&str, &Item> = HashMap::new();
-    if cfg.contains_key("DEFAULT") {
-        for (key, item) in cfg.get("DEFAULT").unwrap().as_table().unwrap().iter() {
-            defaults.insert(key, item);
-        }
-    }
-
-    for (scenario_key, scenario) in cfg.iter() {
-        let scenario = scenario.as_table().unwrap();
-        // Iterating over scenarios
-        if scenario_key == "DEFAULT" {
-            continue;
-        }
-    }
-
-    //    return Ok(out);
-    todo!()
-}
 /// this function handles `nparty list`
 pub fn list_scenarios(cfgpath: &Path) {
     let headers = "Scenario\tPreferred Parties\tPlace\tYear";
@@ -349,61 +325,266 @@ pub fn list_scenarios(cfgpath: &Path) {
 }
 
 pub struct KnownConfigOptions {
-    pub data_dir: Option<PathBuf>,
-    pub dist_dir: Option<PathBuf>,
+    pub sa1s_dists: Option<PathBuf>,
+    pub prefs_path: Option<PathBuf>,
     pub output_dir: Option<PathBuf>,
     pub party_details: Option<PathBuf>,
     pub polling_places: Option<PathBuf>,
     pub sa1s_breakdown: Option<PathBuf>,
     pub year: Option<String>,
+    pub state: Option<StateAb>,
+}
+
+fn get_option_cli<T>(
+    name: &str,
+    known: &Option<T>,
+    existing: Option<&T>,
+    skippable: bool,
+) -> Option<T>
+where
+    T: std::fmt::Debug + std::str::FromStr + Clone,
+    <T as std::str::FromStr>::Err: std::fmt::Debug,
+{
+    //! Combine options!
+    let mut maybe;
+    if known.is_some() {
+        return known.clone();
+    } else if existing.is_some() {
+        let ex = existing.as_ref().unwrap().clone();
+        let maybe = input(&format!("Enter {} [default: {:?}]: ", name, ex)).ok()?;
+        if maybe.len() == 0 {
+            return Some(ex.clone());
+        } else {
+            return T::from_str(&maybe).ok();
+        }
+    } else {
+        loop {
+            maybe = input(&format!("Enter {}: ", name)).ok()?;
+            if maybe.len() == 0 {
+                if skippable {
+                    return None;
+                }
+                continue;
+            } else {
+                break;
+            }
+        }
+    }
+    return T::from_str(&maybe).ok();
 }
 
 // Now for the big show: gotta generate a thing. Possibly from an existing thing.
 // Plan of attack: we need a way to take a bunch of Scenarios and override a Document with it
 // Then we have three main functions:
 // [x] Turn a Document into Scenarios
-// [ ] Create a new Scenario from CLI input
+// [-] Create a new Scenario from CLI input
 // [ ] Update a Document from Scenarios
 
-/// `cli_scenarios()` is about creating one or more Scenarios interactively
-/// Previously with `get_scenarios()` and `get_defaults()` we read them from a toml_edit::Document
-/// Then with `patch_scenarios()` we shall incorporate the new scenarios into an existing toml_edit::Document
-/// (and factor out a Defaults section)
+// `cli_scenarios()` is about creating one or more Scenarios interactively
+// Previously with `get_scenarios()` and `get_defaults()` we read them from a toml_edit::Document
+// Then with `patch_scenarios()` we shall incorporate the new scenarios into an existing toml_edit::Document
+// (and factor out a Defaults section)
+
 pub fn cli_scenarios(
-    existing: &Option<Scenario>,
+    existing: Option<&Scenario>,
     candidates: &CandsData,
-    known_options: KnownConfigOptions,
-) -> Result<BTreeMap<String, Scenario>, String> {
-    //let mut out = BTreeMap::new();
-
-    let mut new_scen: String = input("Define a new Scenario? [Y]/n: ")
-        .expect("kthxbai")
-        .to_uppercase();
+    known_options: &KnownConfigOptions,
+) -> Result<BTreeMap<String, Scenario>, std::io::Error> {
+    let mut out = BTreeMap::new();
+    let mut new_scen: String = input("Define a new Scenario? [Y]/n: ")?.to_uppercase();
     while new_scen.starts_with('Y') || new_scen.len() == 0 {
-        // let mut scenario: Scenario etc etc
+        let year = get_option_cli(
+            "year",
+            &known_options.year,
+            existing.and_then(|x| Some(&x.year)),
+            false,
+        )
+        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
-        // data dir: ultimately we want to leverage this for a list of filenames
-        // let data_dir = known_options.data_dir;
-        // dist dir dict?
+        let polling_places = get_option_cli(
+            "polling-places path",
+            &known_options.polling_places,
+            existing.and_then(|x| Some(&x.polling_places)),
+            false,
+        )
+        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
-        // state
+        let sa1s_breakdown = get_option_cli(
+            "polling-places to SA1s path",
+            &known_options.sa1s_breakdown,
+            existing.and_then(|x| x.sa1s_breakdown.as_ref()),
+            true,
+        );
 
-        // party details
+        // this needs to have the scenario name too
+        let output_dir = get_option_cli(
+            "output directory",
+            &known_options.output_dir,
+            existing.and_then(|x| Some(&x.output_dir)),
+            false,
+        )
+        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
-        // paths paths paths
+        let sa1s_dists = get_option_cli(
+            "SA1s-to-districts file path",
+            &known_options.sa1s_dists,
+            existing.and_then(|x| x.sa1s_dists.as_ref()),
+            true,
+        );
 
-        // filtering
+        let prefs_path = get_option_cli(
+            "preferences file path",
+            &known_options.prefs_path,
+            existing.and_then(|x| Some(&x.prefs_path)),
+            false,
+        )
+        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
-        // scenario code
-        let mut scen_code = String::new();
+        let party_details = get_option_cli(
+            "party-details file path",
+            &known_options.party_details,
+            None,
+            false,
+        )
+        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        let party_details_file = open_csvz_from_path(&party_details);
+        let party_abbrvs = read_party_abbrvs(party_details_file);
 
-        // out.insert(scen_code, scenario);
+        let state = get_option_cli(
+            "state or territory",
+            &known_options.state,
+            existing.and_then(|x| Some(&x.state)),
+            true,
+        )
+        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+
+        // now for the tricky bit
+        let mut groups = Parties::new();
+
+        // Add a Group
+        let mut add_group = String::from("Y");
+
+        while add_group.starts_with('Y') || add_group.len() == 0 {
+            // what is a group but a list of candidates?
+            let mut group_cands: HashSet<String> = HashSet::new();
+            let mut group_parties: HashSet<String> = HashSet::new();
+
+            // search-filter candidates in a loop to add to the group
+            loop {
+                let pattern = input(&format!(
+                    "Search in {} (case-insensitive, regex allowed):\n",
+                    state
+                ))?;
+
+                if pattern.len() == 0 {
+                    let done = input("Finished adding to group? [Y]/n: ")?.to_uppercase();
+                    if done.starts_with("Y") || done.len() == 0 {
+                        // name and insert the group
+                        // TODO once we have party abbrs back online: name groups by party abbr where available
+                        let suggested_name = group_parties.iter().join("");
+                        let group_name =
+                            get_option_cli("group name", &None, Some(&suggested_name), false)
+                                .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+                        groups.insert(group_name, group_cands.into_iter().collect());
+                        break;
+                    }
+                }
+
+                let fc: Vec<FilteredCandidate> = filter_candidates(&candidates, &state, &pattern);
+
+                if fc.len() > 0 {
+                    println!("Selected Candidates for {}", state);
+
+                    let mut tw = TabWriter::new(vec![]);
+                    for c in &fc {
+                        write!(&mut tw, "{}\n", &c.fmt_tty()).expect("couldn't write selection");
+                    }
+                    tw.flush().unwrap();
+                    print!("{}", String::from_utf8(tw.into_inner().unwrap()).unwrap());
+
+                    // add candidates
+                    let whatdo = input(&format!("Add selected candidate[s] to group? [Y]/n: "))?
+                        .to_uppercase();
+                    if whatdo.starts_with("Y") || whatdo.len() == 0 {
+                        for cand in &fc {
+                            let candstr = match cand.surname.as_str() {
+                                "TICKET" => format!("{}:{}", cand.ticket, cand.party),
+                                _ => format!(
+                                    "{}:{} {}",
+                                    cand.ticket, cand.surname, cand.ballot_given_nm
+                                ),
+                            };
+                            group_cands.insert(candstr);
+                            group_parties.insert(
+                                party_abbrvs.get(&cand.party).unwrap_or(&cand.party).clone(),
+                            );
+                        }
+                    }
+                }
+            } // end of add-candidates loop
+            add_group = input("Add a new group? [Y]/n")?.to_uppercase();
+            if !(add_group.starts_with("Y") || add_group.len() == 0) {
+                break;
+            }
+        }
+
+        // scenario code name
+        let mut name = format!(
+            "{}_{}PP_{}",
+            state,
+            groups.keys().len(),
+            groups.keys().join("")
+        );
+        let keepit =
+            input(&format!("Use suggested scenario code {} [Y]/n: ", name))?.to_uppercase();
+        if !(keepit.starts_with("Y") || keepit.len() == 0) {
+            name = String::new();
+            while name.len() == 0 {
+                name = input("Please type a short code to name the new Scenario: ")?;
+            }
+        }
+
+        // I see no reason to go to the CLI on these. Generator == Defaults Are Fine Here
+        let npp_booths = PathBuf::from(&output_dir)
+            .join(&name)
+            .join("NPP_Booths.csv");
+        let sa1s_prefs = Some(
+            PathBuf::from(&output_dir)
+                .join(&name)
+                .join("SA1s_Prefs.csv"),
+        );
+        let npp_dists = Some(PathBuf::from(&output_dir).join(&name).join("NPP_Dists.csv"));
+
+        let scenario = Scenario {
+            name: name.clone(),
+            year,
+            polling_places,
+            sa1s_breakdown,
+            output_dir,
+            npp_booths,
+            sa1s_prefs,
+            npp_dists,
+            prefs_path,
+            sa1s_dists,
+            state,
+            groups,
+        };
+
+        out.insert(name.clone(), scenario);
         // go again?
-        new_scen = input("Define another new Scenario? [Y]/n: ")
-            .expect("kthxbai")
-            .to_uppercase();
+        new_scen = input("Define another new Scenario? [Y]/n: ")?.to_uppercase();
     }
 
-    //    Ok(out)
+    return Ok(out);
+}
+
+// TODO: function to write scenarios back out
+pub fn write_scenarios(
+    input: BTreeMap<String, Scenario>,
+    outfile: &mut dyn Write,
+) -> std::io::Result<String> {
+    let outdoc: Document =
+        ser::to_document(&input).expect("Error converting Scenarios to TOML document");
+    write!(outfile, "{}", outdoc)?;
     todo!()
 }

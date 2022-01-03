@@ -26,16 +26,16 @@ pub const UNDERLINE: &str = "\u{1b}[4m";
 pub const NEGATIVE: &str = "\u{1b}[7m";
 
 /// Cursor Previous Line
-pub const CPL: &str = "\u{1b}[F";
+// pub const CPL: &str = "\u{1b}[F";
 
 /// Erase In Line
-pub const EIL: &str = "\u{1b}[2K";
+// pub const EIL: &str = "\u{1b}[2K";
 
 /// Non-standard: a CPL followed by EIL
 /// Preface println with this to simply overwrite the previous line
 pub const TTYJUMP: &str = "\u{1b}[F\u{1b}[2K";
 
-pub const ALL_SYMBOLS: [&str; 7] = [END, BOLD, FAINT, ITALIC, UNDERLINE, NEGATIVE, TTYJUMP];
+// pub const ALL_SYMBOLS: [&str; 7] = [END, BOLD, FAINT, ITALIC, UNDERLINE, NEGATIVE, TTYJUMP];
 
 const SPAN_SYMBOLS: [&str; 5] = [BOLD, FAINT, ITALIC, UNDERLINE, NEGATIVE];
 

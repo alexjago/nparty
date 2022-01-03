@@ -92,6 +92,10 @@ subcommands:
                 long: year
                 help: "* Year of the election"
                 takes_value: true
+            - state: 
+                long: state
+                help: "* State or Territory"
+                takes_value: true
             - data_dir:
                 long: data-dir
                 help: "Election Data directory"

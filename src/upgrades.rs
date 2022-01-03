@@ -2,8 +2,7 @@
 use crate::utils::*;
 use csv;
 use std::collections::HashMap;
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::result::Result;
+use std::io::{Read, Write};
 
 // The candidate file format is sufficiently unchanged
 // that it doesn't appear to need upgrading.
@@ -83,7 +82,6 @@ pub fn upgrade_prefs_16_19(
                 String::from("Batch No"),
                 String::from("Paper No"),
             ];
-            // let mut header = vec!["State", "Division", "Vote Collection Point Name", "Vote Collection Point ID", "Batch No", "Paper No"];
 
             state = divstates[&old.ElectorateNm].clone();
             statestring = state.to_string();
@@ -98,7 +96,6 @@ pub fn upgrade_prefs_16_19(
                 let tnum = tnum as u32;
                 let tstring = tnum.to_ticket();
                 let ticket = &ballot_paper[&tstring];
-                // eprintln!("{:#?}", ticket);
                 atls.push(format!("{}:{}", tstring, ticket[&0_u32].party));
                 for cnum in 1..ticket.len() {
                     let cnum = cnum as u32;
@@ -124,8 +121,6 @@ pub fn upgrade_prefs_16_19(
             header.append(&mut atls);
             header.append(&mut btls);
 
-            // eprintln!("{:#?} {}", &header, header.len());
-
             outwtr.write_record(header).unwrap();
         }
 
@@ -141,10 +136,26 @@ pub fn upgrade_prefs_16_19(
         ];
         new.append(&mut prefs);
 
-        // eprintln!("{:#?}, {}", new, new.len());
-
         outwtr.write_record(new).expect("Error writing output file");
 
         progress += 1;
+
+        if progress % 100000 == 0 {
+            eprintln!("{}Upgrade progress... {}", crate::term::TTYJUMP, progress);
+        }
     }
+}
+
+/// Sniff the era of a CSV stream
+/// It's a stream, so be sure it's the start
+pub fn era_sniff(infile: &mut dyn Read) -> std::io::Result<usize> {
+    let mut inrdr = csv::Reader::from_reader(infile);
+    let hdr: Vec<&str> = inrdr.headers()?.into_iter().collect();
+    let rez = match hdr[0..6] {
+        ["ElectorateNm", "VoteCollectionPointNm", "VoteCollectionPointId", "BatchNo", "PaperNo", "Preferences"] => {
+            2016
+        }
+        _ => 2019,
+    };
+    Ok(rez)
 }

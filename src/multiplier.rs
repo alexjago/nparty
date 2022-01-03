@@ -16,10 +16,6 @@ use std::fs::create_dir_all;
 use std::path::Path;
 use std::process;
 
-const SA1_FIELDS: [&str; 7] = [
-    "year", "state_ab", "div_nm", "SA1_id", "pp_id", "pp_nm", "votes",
-];
-
 fn sfl(input: &str) -> usize {
     match input {
         "year" => 0,
