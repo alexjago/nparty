@@ -111,8 +111,12 @@ fn run(sm: &clap::ArgMatches) {
 
     for scen_name in scenario_names {
         // Which phase(s)?
-        let scenario = cfg.get(&scen_name).unwrap_or_else(|| panic!("Requested scenario {} not found in configuration file",
-            scen_name));
+        let scenario = cfg.get(&scen_name).unwrap_or_else(|| {
+            panic!(
+                "Requested scenario {} not found in configuration file",
+                scen_name
+            )
+        });
         // eprintln!("{:#?}", scenario);
         eprintln!("Running Scenario {}", scen_name);
 
@@ -210,10 +214,7 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) {
             let mut query = String::from(inpath.to_str().unwrap());
             query.push_str(filter);
 
-            let ips: Vec<PathBuf> = glob::glob(&query)
-                .unwrap()
-                .filter_map(Result::ok)
-                .collect();
+            let ips: Vec<PathBuf> = glob::glob(&query).unwrap().filter_map(Result::ok).collect();
 
             if inpath == outpath {
                 // need to upgrade in place
@@ -293,25 +294,13 @@ fn do_configure(sm: &clap::ArgMatches) {
     );
 
     // (semi)optionals
-    let _datadir = sm
-        .value_of_os("data_dir")
-        .map(PathBuf::from);
-    let _distdir = sm
-        .value_of_os("dist_dir")
-        .map(PathBuf::from);
+    let _datadir = sm.value_of_os("data_dir").map(PathBuf::from);
+    let _distdir = sm.value_of_os("dist_dir").map(PathBuf::from);
     let from_scen = sm.value_of_os("from").map(PathBuf::from);
-    let output_dir = sm
-        .value_of_os("output_dir")
-        .map(PathBuf::from);
-    let party_details = sm
-        .value_of_os("party_details")
-        .map(PathBuf::from);
-    let polling_places = sm
-        .value_of_os("polling_places")
-        .map(PathBuf::from);
-    let sa1s_breakdown = sm
-        .value_of_os("sa1s_breakdown")
-        .map(PathBuf::from);
+    let output_dir = sm.value_of_os("output_dir").map(PathBuf::from);
+    let party_details = sm.value_of_os("party_details").map(PathBuf::from);
+    let polling_places = sm.value_of_os("polling_places").map(PathBuf::from);
+    let sa1s_breakdown = sm.value_of_os("sa1s_breakdown").map(PathBuf::from);
     let year = sm.value_of("year").map(String::from);
     let state = sm.value_of("state").map(|x| x.to_state_ab());
 

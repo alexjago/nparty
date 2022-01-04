@@ -13,8 +13,8 @@ use toml_edit::*;
 use crate::booths::Parties;
 use crate::term::{BOLD, END};
 use crate::utils::{
-    filter_candidates, input, open_csvz_from_path, read_party_abbrvs, CandsData,
-    FilteredCandidate, StateAb, ToStateAb,
+    filter_candidates, input, open_csvz_from_path, read_party_abbrvs, CandsData, FilteredCandidate,
+    StateAb, ToStateAb,
 };
 
 // TODO: long term goals to get back to Python equivalent functionality
@@ -483,7 +483,9 @@ pub fn cli_scenarios(
                         let suggested_name = group_parties.iter().join("");
                         let group_name =
                             get_option_cli("group name", &None, Some(&suggested_name), false)
-                                .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
+                                .ok_or_else(|| {
+                                    std::io::Error::from(std::io::ErrorKind::NotFound)
+                                })?;
                         groups.insert(group_name, group_cands.into_iter().collect());
                         break;
                     }
@@ -502,8 +504,8 @@ pub fn cli_scenarios(
                     print!("{}", String::from_utf8(tw.into_inner().unwrap()).unwrap());
 
                     // add candidates
-                    let whatdo = input("Add selected candidate[s] to group? [Y]/n: ")?
-                        .to_uppercase();
+                    let whatdo =
+                        input("Add selected candidate[s] to group? [Y]/n: ")?.to_uppercase();
                     if whatdo.starts_with('Y') || whatdo.is_empty() {
                         for cand in &fc {
                             let candstr = match cand.surname.as_str() {

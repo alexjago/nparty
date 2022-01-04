@@ -45,8 +45,7 @@ impl ToTicket for BallotNumber {
             let num = self - 1;
             let remainder = num % 26;
             let shift = (num - remainder) / 26;
-            Self::to_ticket(shift)
-                + &char::from_u32(remainder + 'A' as u32).unwrap().to_string()
+            Self::to_ticket(shift) + &char::from_u32(remainder + 'A' as u32).unwrap().to_string()
         }
     }
 }
@@ -231,7 +230,9 @@ where
         }
         //println!("{:?}", cand_record);
 
-        bigdict.entry(cand_record.state_ab).or_insert_with(BallotPaper::new);
+        bigdict
+            .entry(cand_record.state_ab)
+            .or_insert_with(BallotPaper::new);
 
         if !bigdict
             .get(&cand_record.state_ab)
@@ -503,8 +504,12 @@ pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read> {
     if inpath.exists() && inpath.is_file() {
         open_csvz(File::open(inpath).unwrap())
     } else {
-        let ext = inpath.extension().unwrap_or_else(|| panic!("Could not find {:#?} whether compressed or not",
-            inpath.display()));
+        let ext = inpath.extension().unwrap_or_else(|| {
+            panic!(
+                "Could not find {:#?} whether compressed or not",
+                inpath.display()
+            )
+        });
         if ext == OsStr::new("csv") {
             let newpath = inpath.with_extension("zip");
             open_csvz(File::open(newpath).unwrap())

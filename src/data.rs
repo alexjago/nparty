@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{create_dir_all, write, File};
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
 // TODO: calamine for conversions...
 
@@ -100,7 +100,12 @@ pub fn download(dldir: &Path) {
     for (_, item) in sacred_texts {
         let year_dir = dldir.join(item.year);
         create_dir_all(&year_dir).unwrap();
-        let mut all_urls: Vec<String> = vec![item.polling_places, item.political_parties, item.sa1s_pps, item.candidates];
+        let mut all_urls: Vec<String> = vec![
+            item.polling_places,
+            item.political_parties,
+            item.sa1s_pps,
+            item.candidates,
+        ];
         for (_, link) in item.formal_prefs {
             all_urls.push(link);
         }
@@ -114,8 +119,9 @@ pub fn download(dldir: &Path) {
             if !dlto.is_file() {
                 eprintln!("Downloading: {}", &dlto.display());
                 let response = reqwest::blocking::get(&link)
-                    .unwrap_or_else(|_| panic!("Error downloading {:#?}",
-                        &aspath.file_name().unwrap()))
+                    .unwrap_or_else(|_| {
+                        panic!("Error downloading {:#?}", &aspath.file_name().unwrap())
+                    })
                     .bytes()
                     .unwrap();
                 write(&dlto, response).expect("Error writing file");

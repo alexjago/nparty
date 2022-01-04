@@ -188,7 +188,7 @@ pub fn booth_npps(
         // }
 
         let record: BoothRecord = result.unwrap().deserialize(None).unwrap(); //
-                                                                                // do actual-useful things with record
+                                                                              // do actual-useful things with record
         if record.State != *state {
             continue;
         }
@@ -466,9 +466,16 @@ pub fn booth_npps(
         .expect("error writing booths header");
 
     for (bk, bv) in booth_counts.iter().sorted() {
-        let br = booths.get(bk).unwrap_or_else(|| panic!("It's really weird, but {:#?} isn't in `booths`.",
-            bk));
-        let mut bdeets = vec![br.PollingPlaceID.to_string(), br.DivisionNm.clone(), br.PollingPlaceNm.clone(), br.Latitude.clone(), br.Longitude.clone()];
+        let br = booths
+            .get(bk)
+            .unwrap_or_else(|| panic!("It's really weird, but {:#?} isn't in `booths`.", bk));
+        let mut bdeets = vec![
+            br.PollingPlaceID.to_string(),
+            br.DivisionNm.clone(),
+            br.PollingPlaceNm.clone(),
+            br.Latitude.clone(),
+            br.Longitude.clone(),
+        ];
         let mut total = 0;
         for i in bv.iter() {
             bdeets.push(i.to_string());
@@ -481,7 +488,13 @@ pub fn booth_npps(
     wtr.flush().expect("error writing booths");
 
     for (bk, bv) in division_specials.iter() {
-        let mut bdeets: Vec<String> = vec!["".to_string(), bk.0.clone(), bk.1.clone(), "".to_string(), "".to_string()];
+        let mut bdeets: Vec<String> = vec![
+            "".to_string(),
+            bk.0.clone(),
+            bk.1.clone(),
+            "".to_string(),
+            "".to_string(),
+        ];
         // let mut bdeets = Vec::new();
         // // bdeets.push("").push(bksplit[0]).push(bksplit[1]).push("").push("");
         // // let bdeets = &["", bksplit[0], bksplit[1], "", ""].to_vec();
