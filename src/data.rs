@@ -1,10 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::collections::{BTreeMap, HashMap};
-use reqwest;
-use ron;
 use std::fs::{create_dir_all, write, File};
 use std::io::Write;
-use url;
 
 // TODO: calamine for conversions...
 
@@ -58,7 +55,7 @@ fn make_html(texts: &HashMap<String, DlItems>) -> String {
         content.push_str(
             &template_list
                 .replace("LIST_ITEMS", &listy)
-                .replace("YEAR", &year),
+                .replace("YEAR", year),
         );
     }
 
@@ -69,7 +66,7 @@ pub fn examine_html(filey: &Path) {
     let sacred_texts = make_data();
     let mut output = File::create(filey).expect("Error creating file");
     output
-        .write(make_html(&sacred_texts).as_bytes())
+        .write_all(make_html(&sacred_texts).as_bytes())
         .expect("Error writing file");
 }
 
@@ -103,11 +100,7 @@ pub fn download(dldir: &Path) {
     for (_, item) in sacred_texts {
         let year_dir = dldir.join(item.year);
         create_dir_all(&year_dir).unwrap();
-        let mut all_urls: Vec<String> = Vec::new();
-        all_urls.push(item.polling_places);
-        all_urls.push(item.political_parties);
-        all_urls.push(item.sa1s_pps);
-        all_urls.push(item.candidates);
+        let mut all_urls: Vec<String> = vec![item.polling_places, item.political_parties, item.sa1s_pps, item.candidates];
         for (_, link) in item.formal_prefs {
             all_urls.push(link);
         }

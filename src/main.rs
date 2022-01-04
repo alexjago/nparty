@@ -214,8 +214,7 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) {
 
             let ips: Vec<PathBuf> = glob::glob(&query)
                 .unwrap()
-                .filter_map(|x| Result::ok(x))
-                .map(|x| PathBuf::from(x))
+                .filter_map(Result::ok)
                 .collect();
 
             if inpath == outpath {
@@ -254,7 +253,7 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) {
 
         eprintln!("ipath: {} \t opath: {}", ipath.display(), opath.display());
 
-        let era = upgrades::era_sniff(&mut utils::open_csvz_from_path(&ipath))
+        let era = upgrades::era_sniff(&mut utils::open_csvz_from_path(ipath))
             .expect("Error determining era of input.");
 
         if era == 2016 {
@@ -272,8 +271,8 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) {
             } else {
                 eprintln!("Upgrading...");
                 upgrades::upgrade_prefs_16_19(
-                    &mut utils::open_csvz_from_path(&ipath),
-                    &mut utils::get_zip_writer_to_path(&opath, "csv"),
+                    &mut utils::open_csvz_from_path(ipath),
+                    &mut utils::get_zip_writer_to_path(opath, "csv"),
                     &candsdata,
                     &divstates,
                 );
@@ -298,25 +297,25 @@ fn do_configure(sm: &clap::ArgMatches) {
     // (semi)optionals
     let _datadir = sm
         .value_of_os("data_dir")
-        .and_then(|x| Some(PathBuf::from(x)));
+        .map(PathBuf::from);
     let _distdir = sm
         .value_of_os("dist_dir")
-        .and_then(|x| Some(PathBuf::from(x)));
-    let from_scen = sm.value_of_os("from").and_then(|x| Some(PathBuf::from(x)));
+        .map(PathBuf::from);
+    let from_scen = sm.value_of_os("from").map(PathBuf::from);
     let output_dir = sm
         .value_of_os("output_dir")
-        .and_then(|x| Some(PathBuf::from(x)));
+        .map(PathBuf::from);
     let party_details = sm
         .value_of_os("party_details")
-        .and_then(|x| Some(PathBuf::from(x)));
+        .map(PathBuf::from);
     let polling_places = sm
         .value_of_os("polling_places")
-        .and_then(|x| Some(PathBuf::from(x)));
+        .map(PathBuf::from);
     let sa1s_breakdown = sm
         .value_of_os("sa1s_breakdown")
-        .and_then(|x| Some(PathBuf::from(x)));
-    let year = sm.value_of("year").and_then(|x| Some(String::from(x)));
-    let state = sm.value_of("state").and_then(|x| Some(x.to_state_ab()));
+        .map(PathBuf::from);
+    let year = sm.value_of("year").map(String::from);
+    let state = sm.value_of("state").map(|x| x.to_state_ab());
 
     let kco = KnownConfigOptions {
         sa1s_dists: None,

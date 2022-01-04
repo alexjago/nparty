@@ -1,7 +1,6 @@
 //! This file translates Configuration.py
 //! Generation and loading of configuration files.
 
-use atty;
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::read_to_string;
@@ -295,7 +294,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
 pub fn list_scenarios(cfgpath: &Path) {
     let headers = "Scenario\tPreferred Parties\tPlace\tYear";
     let mut output = Vec::new();
-    let doc = get_cfg_doc_from_path(&cfgpath);
+    let doc = get_cfg_doc_from_path(cfgpath);
     let scenarios = get_scenarios(&doc).unwrap();
     for (name, scenario) in scenarios {
         let state = scenario.state.to_string();
@@ -306,13 +305,13 @@ pub fn list_scenarios(cfgpath: &Path) {
 
     if atty::is(atty::Stream::Stdout) {
         let mut tw = TabWriter::new(vec![]);
-        write!(&mut tw, "{}\n", headers).unwrap();
+        writeln!(&mut tw, "{}", headers).unwrap();
         for i in output {
-            write!(&mut tw, "{}\n", i).unwrap();
+            writeln!(&mut tw, "{}", i).unwrap();
         }
         tw.flush().unwrap();
         let output = String::from_utf8(tw.into_inner().unwrap()).unwrap();
-        let firstnewline = output.find("\n").unwrap();
+        let firstnewline = output.find('\n').unwrap();
         let hline = &output[0..firstnewline];
         let rline = &output[firstnewline..output.len()];
         println!("{}{}{}{}", BOLD, hline, END, rline);
@@ -350,17 +349,17 @@ where
     if known.is_some() {
         return known.clone();
     } else if existing.is_some() {
-        let ex = existing.as_ref().unwrap().clone();
+        let ex = existing.unwrap().clone();
         let maybe = input(&format!("Enter {} [default: {:?}]: ", name, ex)).ok()?;
-        if maybe.len() == 0 {
-            return Some(ex.clone());
+        if maybe.is_empty() {
+            return Some(ex);
         } else {
             return T::from_str(&maybe).ok();
         }
     } else {
         loop {
             maybe = input(&format!("Enter {}: ", name)).ok()?;
-            if maybe.len() == 0 {
+            if maybe.is_empty() {
                 if skippable {
                     return None;
                 }
@@ -392,22 +391,22 @@ pub fn cli_scenarios(
 ) -> Result<BTreeMap<String, Scenario>, std::io::Error> {
     let mut out = BTreeMap::new();
     let mut new_scen: String = input("Define a new Scenario? [Y]/n: ")?.to_uppercase();
-    while new_scen.starts_with('Y') || new_scen.len() == 0 {
+    while new_scen.starts_with('Y') || new_scen.is_empty() {
         let year = get_option_cli(
             "year",
             &known_options.year,
-            existing.and_then(|x| Some(&x.year)),
+            existing.map(|x| &x.year),
             false,
         )
-        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
         let polling_places = get_option_cli(
             "polling-places path",
             &known_options.polling_places,
-            existing.and_then(|x| Some(&x.polling_places)),
+            existing.map(|x| &x.polling_places),
             false,
         )
-        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
         let sa1s_breakdown = get_option_cli(
             "polling-places to SA1s path",
@@ -420,10 +419,10 @@ pub fn cli_scenarios(
         let output_dir = get_option_cli(
             "output directory",
             &known_options.output_dir,
-            existing.and_then(|x| Some(&x.output_dir)),
+            existing.map(|x| &x.output_dir),
             false,
         )
-        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
         let sa1s_dists = get_option_cli(
             "SA1s-to-districts file path",
@@ -435,10 +434,10 @@ pub fn cli_scenarios(
         let prefs_path = get_option_cli(
             "preferences file path",
             &known_options.prefs_path,
-            existing.and_then(|x| Some(&x.prefs_path)),
+            existing.map(|x| &x.prefs_path),
             false,
         )
-        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
         let party_details = get_option_cli(
             "party-details file path",
@@ -446,17 +445,17 @@ pub fn cli_scenarios(
             None,
             false,
         )
-        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
         let party_details_file = open_csvz_from_path(&party_details);
         let party_abbrvs = read_party_abbrvs(party_details_file);
 
         let state = get_option_cli(
             "state or territory",
             &known_options.state,
-            existing.and_then(|x| Some(&x.state)),
+            existing.map(|x| &x.state),
             true,
         )
-        .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
         // now for the tricky bit
         let mut groups = Parties::new();
@@ -464,7 +463,7 @@ pub fn cli_scenarios(
         // Add a Group
         let mut add_group = String::from("Y");
 
-        while add_group.starts_with('Y') || add_group.len() == 0 {
+        while add_group.starts_with('Y') || add_group.is_empty() {
             // what is a group but a list of candidates?
             let mut group_cands: HashSet<String> = HashSet::new();
             let mut group_parties: HashSet<String> = HashSet::new();
@@ -476,36 +475,36 @@ pub fn cli_scenarios(
                     state
                 ))?;
 
-                if pattern.len() == 0 {
+                if pattern.is_empty() {
                     let done = input("Finished adding to group? [Y]/n: ")?.to_uppercase();
-                    if done.starts_with("Y") || done.len() == 0 {
+                    if done.starts_with('Y') || done.is_empty() {
                         // name and insert the group
                         // TODO once we have party abbrs back online: name groups by party abbr where available
                         let suggested_name = group_parties.iter().join("");
                         let group_name =
                             get_option_cli("group name", &None, Some(&suggested_name), false)
-                                .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+                                .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
                         groups.insert(group_name, group_cands.into_iter().collect());
                         break;
                     }
                 }
 
-                let fc: Vec<FilteredCandidate> = filter_candidates(&candidates, &state, &pattern);
+                let fc: Vec<FilteredCandidate> = filter_candidates(candidates, &state, &pattern);
 
-                if fc.len() > 0 {
+                if !fc.is_empty() {
                     println!("Selected Candidates for {}", state);
 
                     let mut tw = TabWriter::new(vec![]);
                     for c in &fc {
-                        write!(&mut tw, "{}\n", &c.fmt_tty()).expect("couldn't write selection");
+                        writeln!(&mut tw, "{}", &c.fmt_tty()).expect("couldn't write selection");
                     }
                     tw.flush().unwrap();
                     print!("{}", String::from_utf8(tw.into_inner().unwrap()).unwrap());
 
                     // add candidates
-                    let whatdo = input(&format!("Add selected candidate[s] to group? [Y]/n: "))?
+                    let whatdo = input("Add selected candidate[s] to group? [Y]/n: ")?
                         .to_uppercase();
-                    if whatdo.starts_with("Y") || whatdo.len() == 0 {
+                    if whatdo.starts_with('Y') || whatdo.is_empty() {
                         for cand in &fc {
                             let candstr = match cand.surname.as_str() {
                                 "TICKET" => format!("{}:{}", cand.ticket, cand.party),
@@ -523,7 +522,7 @@ pub fn cli_scenarios(
                 }
             } // end of add-candidates loop
             add_group = input("Add a new group? [Y]/n")?.to_uppercase();
-            if !(add_group.starts_with("Y") || add_group.len() == 0) {
+            if !(add_group.starts_with('Y') || add_group.is_empty()) {
                 break;
             }
         }
@@ -537,9 +536,9 @@ pub fn cli_scenarios(
         );
         let keepit =
             input(&format!("Use suggested scenario code {} [Y]/n: ", name))?.to_uppercase();
-        if !(keepit.starts_with("Y") || keepit.len() == 0) {
+        if !(keepit.starts_with('Y') || keepit.is_empty()) {
             name = String::new();
-            while name.len() == 0 {
+            while name.is_empty() {
                 name = input("Please type a short code to name the new Scenario: ")?;
             }
         }

@@ -38,13 +38,10 @@ pub fn aggregate(
         .expect("Could not find SA1s preferences file!");
     for record in sp_rdr.records() {
         let row = record.unwrap();
-        let id = row.get(0).unwrap().clone();
+        let id = row.get(0).unwrap();
         let mut numbers = Vec::with_capacity(row.len() - 1);
         for i in 1..row.len() {
-            let x: f64 = match row.get(i).unwrap().parse::<f64>() {
-                Ok(x) => x,
-                Err(_) => 0.0_f64,
-            };
+            let x: f64 = row.get(i).unwrap().parse::<f64>().unwrap_or(0.0_f64);
             numbers.push(x);
         }
         sa1_prefs.insert(id.to_string(), numbers);
@@ -84,10 +81,7 @@ pub fn aggregate(
         if row.len() >= 3 {
             // Fun fact: we don't actually need `Pop_Share` for anything
             let sa1_total = sa1_prefs.get(id).unwrap().last().unwrap();
-            let sa1_pop = match row.get(2).unwrap().parse::<f64>() {
-                Ok(x) => x,
-                Err(_) => 0.0_f64,
-            };
+            let sa1_pop = row.get(2).unwrap().parse::<f64>().unwrap_or(0.0_f64);
 
             if sa1_pop == 0.0_f64 {
                 multiplier = 0.0_f64
@@ -113,8 +107,8 @@ pub fn aggregate(
             }
         } else {
             let mut dist_npps = Vec::with_capacity(sa1_npps.len());
-            for j in 0..sa1_npps.len() {
-                dist_npps.push(sa1_npps[j] * multiplier);
+            for s in sa1_npps {
+                dist_npps.push(s * multiplier);
             }
             districts.insert(dist.to_string(), dist_npps);
         }

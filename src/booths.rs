@@ -55,15 +55,15 @@ pub fn factsum(input: usize) -> usize {
     return output;
 }
 
-pub fn group_combos(groups: &Vec<&str>) -> Vec<String> {
+pub fn group_combos(groups: &[&str]) -> Vec<String> {
     //! Generates a Vec<String> of all the orderings
 
     let mut combinations = Vec::with_capacity(factsum(groups.len()));
     combinations.push(String::from("None"));
 
     for r in 1..=groups.len() {
-        for i in groups.clone().into_iter().permutations(r) {
-            let combo: String = i.into_iter().collect();
+        for i in groups.iter().permutations(r) {
+            let combo: String = i.iter().map(|x| (**x)).collect();
             combinations.push(combo);
         }
     }
@@ -126,7 +126,7 @@ pub fn booth_npps(
     for i in parties.keys() {
         partykeys.push(i.as_str());
     }
-    partykeys.sort();
+    partykeys.sort_unstable();
     let partykeys = partykeys;
 
     let mut party_indices: HashMap<&str, usize> = HashMap::new();
@@ -172,36 +172,32 @@ pub fn booth_npps(
     // 2019 problems: there's a pre-header line
     // we need to skip it, and we're going to do so manually.
 
-    let mut pp_rdr_iter = pp_rdr.records();
+    let pp_rdr_iter = pp_rdr.records();
     let mut row_count: usize = 0;
     let mut btl_count: usize = 0;
 
-    loop {
-        if let Some(result) = pp_rdr_iter.next() {
-            row_count += 1;
-            if row_count < 3 {
-                continue;
-            }
-
-            // if row_count > 22 {
-            //     eprintln!("{:#?}", booths);
-            //     break;
-            // }
-
-            let record: BoothRecord = result.unwrap().deserialize(None).unwrap(); //
-                                                                                  // do actual-useful things with record
-            if record.State != *state {
-                continue;
-            }
-
-            let dvb = (
-                record.DivisionNm.to_owned(),
-                record.PollingPlaceNm.to_owned(),
-            );
-            booths.insert(dvb, record);
-        } else {
-            break;
+    for result in pp_rdr_iter {
+        row_count += 1;
+        if row_count < 3 {
+            continue;
         }
+
+        // if row_count > 22 {
+        //     eprintln!("{:#?}", booths);
+        //     break;
+        // }
+
+        let record: BoothRecord = result.unwrap().deserialize(None).unwrap(); //
+                                                                                // do actual-useful things with record
+        if record.State != *state {
+            continue;
+        }
+
+        let dvb = (
+            record.DivisionNm.to_owned(),
+            record.PollingPlaceNm.to_owned(),
+        );
+        booths.insert(dvb, record);
     }
 
     // eprintln!("Loaded {} polling places", row_count - 2);
@@ -283,7 +279,7 @@ pub fn booth_npps(
     eprintln!("ATL Groups: {:#?}", groups_atl);
     eprintln!("BTL Groups: {:#?}", groups_btl);
 
-    eprintln!("");
+    eprintln!();
 
     // At long last! It is time to actually go over the rows!
 
@@ -328,7 +324,6 @@ pub fn booth_npps(
             // ^^^ this is the actual biggest speedup for default 2019 files.
             // If there aren't any fields for BTLs, there aren't any at all...
             // and the 2019 files don't bother with trailing commas.
-            is_btl = true;
             let mut btl_counts: [u16; 6] = [0; 6]; // Note zero-indexing now!
                                                    // fragility note: wrapping adds.
                                                    // This is only a problem if there are more than 65536 candidates BTL and someone plays extreme silly buggers
@@ -347,9 +342,7 @@ pub fn booth_npps(
                     _ => continue,
                 }
             }
-            for j in 0..6 {
-                is_btl &= btl_counts[j] == 1;
-            }
+            is_btl = btl_counts.iter().all(|c| *c == 1);
         }
 
         let groups_which = match is_btl {
@@ -386,7 +379,7 @@ pub fn booth_npps(
             }
         }
 
-        bests.sort();
+        bests.sort_unstable();
         let order: Vec<usize> = bests.iter().map(|x| x.1).collect();
         let pref_idx = *combo_tree.get(&order).unwrap();
 
@@ -399,7 +392,7 @@ pub fn booth_npps(
 
         let booth = booth_counts
             .entry(divbooth)
-            .or_insert(vec![0_usize; combinations.len()]);
+            .or_insert_with(|| vec![0_usize; combinations.len()]);
         booth[pref_idx] += 1;
 
         // progress!
@@ -431,7 +424,9 @@ pub fn booth_npps(
         for w in &NON_BOOTH_CONVERT {
             if bk.1.contains(w) {
                 let divbooth: DivBooth = (bk.0.clone(), non_booth_convert(w).to_string());
+                #[allow(clippy::map_entry)]
                 if division_specials.contains_key(&divbooth) {
+                    #[allow(clippy::needless_range_loop)]
                     for j in 0..combinations.len() {
                         division_specials.get_mut(&divbooth).unwrap()[j] += bv[j];
                     }
@@ -475,12 +470,7 @@ pub fn booth_npps(
             "It's really weird, but {:#?} isn't in `booths`.",
             bk
         ));
-        let mut bdeets = Vec::new();
-        bdeets.push(br.PollingPlaceID.to_string());
-        bdeets.push(br.DivisionNm.clone());
-        bdeets.push(br.PollingPlaceNm.clone());
-        bdeets.push(br.Latitude.clone());
-        bdeets.push(br.Longitude.clone());
+        let mut bdeets = vec![br.PollingPlaceID.to_string(), br.DivisionNm.clone(), br.PollingPlaceNm.clone(), br.Latitude.clone(), br.Longitude.clone()];
         let mut total = 0;
         for i in bv.iter() {
             bdeets.push(i.to_string());
@@ -493,14 +483,15 @@ pub fn booth_npps(
     wtr.flush().expect("error writing booths");
 
     for (bk, bv) in division_specials.iter() {
-        let mut bdeets = Vec::new();
-        // bdeets.push("").push(bksplit[0]).push(bksplit[1]).push("").push("");
-        // let bdeets = &["", bksplit[0], bksplit[1], "", ""].to_vec();
-        bdeets.push("".to_string());
-        bdeets.push(bk.0.clone());
-        bdeets.push(bk.1.clone());
-        bdeets.push("".to_string());
-        bdeets.push("".to_string());
+        let mut bdeets: Vec<String> = vec!["".to_string(), bk.0.clone(), bk.1.clone(), "".to_string(), "".to_string()];
+        // let mut bdeets = Vec::new();
+        // // bdeets.push("").push(bksplit[0]).push(bksplit[1]).push("").push("");
+        // // let bdeets = &["", bksplit[0], bksplit[1], "", ""].to_vec();
+        // bdeets.push("".to_string());
+        // bdeets.push(bk.0.clone());
+        // bdeets.push(bk.1.clone());
+        // bdeets.push("".to_string());
+        // bdeets.push("".to_string());
 
         let mut total = 0;
         for i in bv.iter() {

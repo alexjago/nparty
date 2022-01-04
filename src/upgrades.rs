@@ -1,6 +1,5 @@
 /// This file exists to contain format conversions
 use crate::utils::*;
-use csv;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
@@ -83,7 +82,7 @@ pub fn upgrade_prefs_16_19(
                 String::from("Paper No"),
             ];
 
-            state = divstates[&old.ElectorateNm].clone();
+            state = divstates[&old.ElectorateNm];
             statestring = state.to_string();
 
             let mut atls: Vec<String> = Vec::new();
@@ -124,7 +123,7 @@ pub fn upgrade_prefs_16_19(
             outwtr.write_record(header).unwrap();
         }
 
-        let mut prefs: Vec<&str> = old.Preferences.split(",").collect();
+        let mut prefs: Vec<&str> = old.Preferences.split(',').collect();
 
         let mut new = vec![
             statestring.as_str(),

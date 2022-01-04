@@ -44,7 +44,7 @@ pub fn project(
     // BTreeMap for Parties in general should fix that
     let mut partykeys: Vec<&str> = Vec::new();
     for k in parties.keys() {
-        partykeys.push(&k)
+        partykeys.push(k)
     }
     let combinations = group_combos(&partykeys);
     //println!("Combinations:\n{:#?}", combinations);
@@ -86,16 +86,11 @@ pub fn project(
         let mut boothvotes: Vec<f64> = Vec::with_capacity(combinations.len());
 
         for i in 5..row.len() {
-            let val = match row[i].parse::<f64>() {
-                Ok(x) => x,
-                Err(_) => 0.0,
-            };
+            let val = row[i].parse::<f64>().unwrap_or(0.0);
             boothvotes.push(val);
         }
         if row.len() < boothsfields.len() {
-            for _ in row.len()..boothsfields.len() {
-                boothvotes.push(0.0);
-            }
+            boothvotes.resize(boothsfields.len(), 0.0);
         }
 
         booths.insert(divbooth, (boothmeta, boothvotes));
@@ -120,10 +115,10 @@ pub fn project(
 
         let divbooth = row[sfl("div_nm")].to_owned() + "_" + &row[sfl("pp_nm")];
 
-        if !(row.get(sfl("state_ab")).unwrap() == &state.to_string()) {
+        if row.get(sfl("state_ab")).unwrap() != state.to_string() {
             continue;
         // All SA1s nationwide are in the one file - so any row with the wrong state can be safely skipped.
-        } else if !(row.get(sfl("year")).unwrap() == year) {
+        } else if row.get(sfl("year")).unwrap() != year {
             println!(
                 "Problem in `{}`: Unsupported election year: {}. Exiting.",
                 sa1_breakdown_path.display(),
@@ -137,10 +132,7 @@ pub fn project(
             output_row = outputn.get(&id).unwrap().clone();
         }
 
-        let sa1_booth_votes: f64 = match row.get(sfl("votes")).unwrap().parse::<f64>() {
-            Ok(x) => x,
-            Err(_) => 0.0,
-        };
+        let sa1_booth_votes: f64 = row.get(sfl("votes")).unwrap().parse::<f64>().unwrap_or(0.0);
 
         // This scenario occurs when there are no formal Senate votes at a booth
         // Thus they don't show up in the output of the previous stage
@@ -154,8 +146,8 @@ pub fn project(
         let boothtotal = boothvotes.last().unwrap();
 
         if *boothtotal != 0.0_f64 {
-            for i in 0..boothvotes.len() {
-                *output_row.get_mut(i).unwrap() += boothvotes[i] * sa1_booth_votes / boothtotal;
+            for (i, w) in boothvotes.iter().enumerate() {
+                *output_row.get_mut(i).unwrap() += w * sa1_booth_votes / boothtotal;
                 // doing it in one go produces slightly different results to the Python,
                 // which is concerning...
             }
@@ -171,7 +163,8 @@ pub fn project(
     let mut sa1_wtr = csv::Writer::from_path(sa1_prefs_path).unwrap();
 
     let mut header = vec![String::from("SA1_id")];
-    header.append(&mut combinations.clone());
+    #[allow(clippy::redundant_clone)]
+    header.append(&mut combinations.clone()); // trust me it's better this way
     header.push(String::from("Total"));
     sa1_wtr
         .write_record(header)

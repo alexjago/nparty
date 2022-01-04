@@ -55,7 +55,7 @@ pub fn decorate(input: &str, which: &str) -> String {
     let mut output = String::with_capacity(input.len() + (2 * split_enz.len())); // both those are in bytes
 
     for s in split_enz.iter() {
-        output.push_str(&which);
+        output.push_str(which);
         output.push_str(&s.split(&which).collect::<Vec<&str>>().concat());
         output.push_str(END);
     }
@@ -75,11 +75,10 @@ pub fn decorate_range(input: &str, range: Range<usize>, which: &str) -> String {
     let (middle, last) = midend.split_at(range.end - range.start);
     let mut output = String::with_capacity(input.len() + 2);
 
-    output.push_str(&initial);
-    output.push_str(&decorate(&middle, &which));
-    let split_midz: Vec<&str> = middle.split(END).collect();
+    output.push_str(initial);
+    output.push_str(&decorate(middle, which));
 
-    if split_midz.len() == 1 {
+    if middle.split(END).count() == 1 {
         // No ENDs in middle
         // It's possible that some formatting was started in initial
         // and therefore needs to be propogated.
@@ -93,7 +92,7 @@ pub fn decorate_range(input: &str, range: Range<usize>, which: &str) -> String {
         }
     }
 
-    output.push_str(&last);
+    output.push_str(last);
 
     return output;
 }

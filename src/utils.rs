@@ -1,13 +1,12 @@
+#![allow(clippy::upper_case_acronyms)]
 // use log;
 use inflector::cases::titlecase::to_title_case;
-use regex;
 use std::char;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{stdin, stdout, Cursor, Read, Seek, SeekFrom, Write};
 use std::path;
-use zip;
 
 use super::term;
 use SeekFrom::Start;
@@ -232,9 +231,7 @@ where
         }
         //println!("{:?}", cand_record);
 
-        if !bigdict.contains_key(&cand_record.state_ab) {
-            bigdict.insert(cand_record.state_ab.clone(), BallotPaper::new());
-        }
+        bigdict.entry(cand_record.state_ab).or_insert_with(BallotPaper::new);
 
         if !bigdict
             .get(&cand_record.state_ab)
@@ -355,7 +352,7 @@ where
         }
         let pr: PartyRecord = result.unwrap();
 
-        if pr.registered_party_ab != "" {
+        if !pr.registered_party_ab.is_empty() {
             bigdict.insert(pr.registered_party_ab, to_title_case(&pr.party_ab));
         }
         bigdict.insert(pr.party_nm, to_title_case(&pr.party_ab));
@@ -440,14 +437,14 @@ impl FilteredCandidate {
 pub fn filter_candidates(
     candsdict: &CandsData,
     state: &StateAb,
-    filter: &String,
+    filter: &str,
 ) -> Vec<FilteredCandidate> {
     let mut data = Vec::new();
-    let filt = regex::RegexBuilder::new(&filter)
+    let filt = regex::RegexBuilder::new(filter)
         .case_insensitive(true)
         .build()
         .unwrap();
-    for (tk, cands) in candsdict.get(&state).unwrap().iter() {
+    for (tk, cands) in candsdict.get(state).unwrap().iter() {
         for (_balnum, cv) in cands.iter() {
             // OK, field by field
             let mut cands_matches = [false; 5];
@@ -455,12 +452,12 @@ pub fn filter_candidates(
             cands_matches[1] = filt.is_match(&cv.ballot_given_nm);
             cands_matches[2] = filt.is_match(&cv.ballot_number.to_string());
             cands_matches[3] = filt.is_match(&cv.party);
-            cands_matches[4] = filt.is_match(&tk);
+            cands_matches[4] = filt.is_match(tk);
 
             let any_match: bool = cands_matches.iter().fold(false, |acc, x| (acc | x));
 
             let disregard_if_ticket_literal =
-                candsdict.get(&state).unwrap().contains_key(filter) & !(filter == tk);
+                candsdict.get(state).unwrap().contains_key(filter) & (filter != tk);
             // disregard filters that exactly specify OTHER ticket literals
             if any_match & !disregard_if_ticket_literal {
                 data.push(FilteredCandidate {
@@ -470,7 +467,7 @@ pub fn filter_candidates(
                     ballot_number: cv.ballot_number.clone().to_string(),
                     party: cv.party.clone().to_string(),
                     ticket: tk.to_string(),
-                    cands_matches: cands_matches.clone(),
+                    cands_matches,
                 });
             }
         }
@@ -511,10 +508,10 @@ pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read> {
             inpath.display()
         ));
         if ext == OsStr::new("csv") {
-            let newpath = (*inpath.clone()).with_extension("zip");
+            let newpath = inpath.with_extension("zip");
             return open_csvz(File::open(newpath).unwrap());
         } else if ext == OsStr::new("csv") {
-            let newpath = (*inpath.clone()).with_extension("csv");
+            let newpath = inpath.with_extension("csv");
             return open_csvz(File::open(newpath).unwrap());
         } else {
             panic!(
