@@ -143,6 +143,12 @@ impl ToStateAb for &str {
     }
 }
 
+impl std::convert::From<&str> for StateAb {
+    fn from(item: &str) -> Self {
+        item.to_state_ab()
+    }
+}
+
 impl fmt::Display for StateAb {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self, f)

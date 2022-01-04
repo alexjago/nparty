@@ -14,8 +14,7 @@ use crate::booths::Parties;
 use crate::term::{BOLD, END};
 use crate::utils::{
     filter_candidates, input, open_csvz_from_path, read_party_abbrvs, CandsData, FilteredCandidate,
-    StateAb, ToStateAb,
-};
+    StateAb};
 
 // TODO: long term goals to get back to Python equivalent functionality
 // We will support a TOML setup that's otherwise consistent with Python's ConfigParser's
@@ -73,7 +72,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
     // We pop the contents of [DEFAULT] into a HashMap to avoid existence failure
     let mut defaults: HashMap<&str, &Item> = HashMap::new();
     if cfg.contains_key("DEFAULT") {
-        for (key, item) in cfg.get("DEFAULT").unwrap().as_table().unwrap().iter() {
+        for (key, item) in cfg.get("DEFAULT").unwrap().as_table().unwrap().into_iter() {
             defaults.insert(key, item);
         }
     }
@@ -87,156 +86,62 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
 
         // println!("{}, {}", scenario_key, scenario);
 
-        // Large amount of boilerplate follows!
+        // Fair amount of boilerplate follows!
         let name = String::from(scenario_key);
 
-        let year;
-        if scenario.contains_key("YEAR") {
-            year = String::from(scenario.get("YEAR").unwrap().as_str().unwrap());
-        } else if defaults.contains_key("YEAR") {
-            year = String::from(defaults.get("YEAR").unwrap().as_str().unwrap());
-        } else {
-            return Err("Missing YEAR");
+        /// We are able to abstract out much of the logic into this...
+        fn get_attribute<'a, T, F>(
+            key: &'a str,
+            scenario: &'a Table,
+            defaults: &'a HashMap<&str, &Item>,
+            conversion_fn: F,
+        ) -> Option<T>
+        where
+            F: FnOnce(&'a str) -> T,
+        {
+            scenario
+                .get(key)
+                .or_else(|| defaults.get(key).copied())
+                .and_then(|x| x.as_str())
+                .map(conversion_fn)
         }
+
+        let year =
+            get_attribute("YEAR", scenario, &defaults, String::from).ok_or("Missing YEAR")?;
 
         // Non-Optional paths: POLLING_PLACES_PATH, OUTPUT_DIR, NPP_BOOTHS_FN, PREFS_PATH
 
-        let polling_places: PathBuf;
-        if scenario.contains_key("POLLING_PLACES_PATH") {
-            polling_places = PathBuf::from(
-                scenario
-                    .get("POLLING_PLACES_PATH")
-                    .unwrap()
-                    .as_str()
-                    .unwrap(),
-            );
-        } else if defaults.contains_key("POLLING_PLACES_PATH") {
-            polling_places = PathBuf::from(
-                defaults
-                    .get("POLLING_PLACES_PATH")
-                    .unwrap()
-                    .as_str()
-                    .unwrap(),
-            );
-        } else {
-            return Err("Missing POLLING_PLACES_PATH");
-        }
+        let polling_places =
+            get_attribute("POLLING_PLACES_PATH", scenario, &defaults, PathBuf::from)
+                .ok_or("Missing POLLING_PLACES_PATH")?;
 
-        let output_dir: PathBuf;
-        if scenario.contains_key("OUTPUT_DIR") {
-            output_dir = PathBuf::from(scenario.get("OUTPUT_DIR").unwrap().as_str().unwrap());
-        } else if defaults.contains_key("OUTPUT_DIR") {
-            output_dir = PathBuf::from(defaults.get("OUTPUT_DIR").unwrap().as_str().unwrap());
-        } else {
-            return Err("Missing OUTPUT_DIR");
-        }
+        let output_dir = get_attribute("OUTPUT_DIR", scenario, &defaults, PathBuf::from)
+            .ok_or("Missing OUTPUT_DIR")?;
 
-        let mut npp_booths = output_dir.clone();
-        if scenario.contains_key("NPP_BOOTHS_FN") {
-            npp_booths.push(&name);
-            npp_booths.push(scenario.get("NPP_BOOTHS_FN").unwrap().as_str().unwrap());
-        } else if defaults.contains_key("NPP_BOOTHS_FN") {
-            npp_booths.push(&name);
-            npp_booths.push(defaults.get("NPP_BOOTHS_FN").unwrap().as_str().unwrap());
-        } else {
-            return Err("Missing NPP_BOOTHS_FN");
-        }
+        let npp_booths = get_attribute("NPP_BOOTHS_FN", scenario, &defaults, PathBuf::from)
+            .map(|x| output_dir.clone().join(&name).join(&x))
+            .ok_or("Missing NPP_BOOTHS_FN")?;
 
-        let prefs_path: PathBuf;
-        if scenario.contains_key("PREFS_PATH") {
-            prefs_path = PathBuf::from(scenario.get("PREFS_PATH").unwrap().as_str().unwrap());
-        } else if defaults.contains_key("PREFS_PATH") {
-            prefs_path = PathBuf::from(defaults.get("PREFS_PATH").unwrap().as_str().unwrap());
-        } else {
-            return Err("Missing PREFS_PATH");
-        }
+        let prefs_path = get_attribute("PREFS_PATH", scenario, &defaults, PathBuf::from)
+            .ok_or("Missing PREFS_PATH")?;
 
         // Optional Paths: SA1S_BREAKDOWN_PATH, SA1S_PREFS_FN, NPP_DISTS_FN, SA1S_DISTS_PATH
 
-        let sa1s_breakdown: Option<PathBuf>;
-        if scenario.contains_key("SA1S_BREAKDOWN_PATH") {
-            sa1s_breakdown = Some(PathBuf::from(
-                scenario
-                    .get("SA1S_BREAKDOWN_PATH")
-                    .unwrap()
-                    .as_str()
-                    .unwrap(),
-            ));
-        } else if defaults.contains_key("SA1S_BREAKDOWN_PATH") {
-            sa1s_breakdown = Some(PathBuf::from(
-                defaults
-                    .get("SA1S_BREAKDOWN_PATH")
-                    .unwrap()
-                    .as_str()
-                    .unwrap(),
-            ));
-        } else {
-            sa1s_breakdown = None;
-        }
+        let sa1s_breakdown =
+            get_attribute("SA1S_BREAKDOWN_PATH", scenario, &defaults, PathBuf::from);
 
-        let sa1s_prefs: Option<PathBuf>;
-        let mut _sa1p = output_dir.clone();
-        if scenario.contains_key("SA1S_PREFS_FN") {
-            _sa1p.push(&name);
-            _sa1p.push(scenario.get("SA1S_PREFS_FN").unwrap().as_str().unwrap());
-            sa1s_prefs = Some(_sa1p);
-        } else if defaults.contains_key("SA1S_PREFS_FN") {
-            _sa1p.push(&name);
-            _sa1p.push(defaults.get("SA1S_PREFS_FN").unwrap().as_str().unwrap());
-            sa1s_prefs = Some(_sa1p);
-        } else {
-            sa1s_prefs = None;
-        }
+        let sa1s_prefs = get_attribute("SA1S_PREFS_FN", scenario, &defaults, PathBuf::from)
+            .map(|x| output_dir.clone().join(&name).join(&x));
 
-        let npp_dists: Option<PathBuf>;
-        let mut _nppd = output_dir.clone();
-        if scenario.contains_key("NPP_DISTS_FN") {
-            _nppd.push(&name);
-            _nppd.push(scenario.get("NPP_DISTS_FN").unwrap().as_str().unwrap());
-            npp_dists = Some(_nppd);
-        } else if defaults.contains_key("NPP_DISTS_FN") {
-            _nppd.push(&name);
-            _nppd.push(defaults.get("NPP_DISTS_FN").unwrap().as_str().unwrap());
-            npp_dists = Some(_nppd);
-        } else {
-            npp_dists = None;
-        }
+        let npp_dists = get_attribute("NPP_DISTS_FN", scenario, &defaults, PathBuf::from)
+            .map(|x| output_dir.clone().join(&name).join(&x));
 
-        let sa1s_dists: Option<PathBuf>;
-        if scenario.contains_key("SA1S_DISTS_PATH") {
-            sa1s_dists = Some(PathBuf::from(
-                scenario.get("SA1S_DISTS_PATH").unwrap().as_str().unwrap(),
-            ));
-        } else if defaults.contains_key("SA1S_DISTS_PATH") {
-            sa1s_dists = Some(PathBuf::from(
-                defaults.get("SA1S_DISTS_PATH").unwrap().as_str().unwrap(),
-            ));
-        } else {
-            sa1s_dists = None;
-        }
+        let sa1s_dists = get_attribute("SA1S_DISTS_PATH", scenario, &defaults, PathBuf::from);
 
-        let state: StateAb;
-
-        if scenario.contains_key("STATE") {
-            state = scenario
-                .get("STATE")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_state_ab();
-        } else if defaults.contains_key("STATE") {
-            state = defaults
-                .get("STATE")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_state_ab();
-        } else {
-            return Err("Missing STATE");
-        }
+        // Not optional: STATE
+        let state: StateAb = get_attribute("STATE", scenario, &defaults, StateAb::from).ok_or("Missing STATE")?;
 
         // Really the only complicated parse is the GROUPS.
-
         let mut groups: Parties = BTreeMap::new();
         if scenario.contains_key("GROUPS") {
             for (group_name, group) in scenario.get("GROUPS").unwrap().as_table().unwrap().iter() {
@@ -498,9 +403,9 @@ pub fn cli_scenarios(
 
                     let mut tw = TabWriter::new(vec![]);
                     for c in &fc {
-                        writeln!(&mut tw, "{}", &c.fmt_tty()).expect("couldn't write selection");
+                        writeln!(&mut tw, "{}", &c.fmt_tty())?;
                     }
-                    tw.flush().unwrap();
+                    tw.flush()?;
                     print!("{}", String::from_utf8(tw.into_inner().unwrap()).unwrap());
 
                     // add candidates
@@ -584,8 +489,7 @@ pub fn write_scenarios(
     input: BTreeMap<String, Scenario>,
     outfile: &mut dyn Write,
 ) -> Result<(), std::io::Error> {
-    let outdoc: Document =
-        ser::to_document(&input).expect("Error converting Scenarios to TOML document");
+    let outdoc: Document = ser::to_document(&input).expect("Error converting Scenario to TOML");
     outfile.write_all(outdoc.to_string().as_bytes())?;
     Ok(())
 }
