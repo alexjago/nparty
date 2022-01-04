@@ -281,7 +281,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
         );
     }
 
-    return Ok(out);
+    Ok(out)
 }
 
 // pub struct Defaults {
@@ -369,7 +369,7 @@ where
             }
         }
     }
-    return T::from_str(&maybe).ok();
+    T::from_str(&maybe).ok()
 }
 
 // Now for the big show: gotta generate a thing. Possibly from an existing thing.
@@ -574,7 +574,7 @@ pub fn cli_scenarios(
         new_scen = input("Define another new Scenario? [Y]/n: ")?.to_uppercase();
     }
 
-    return Ok(out);
+    Ok(out)
 }
 
 // TODO: function to write scenarios back out

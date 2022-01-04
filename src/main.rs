@@ -111,10 +111,8 @@ fn run(sm: &clap::ArgMatches) {
 
     for scen_name in scenario_names {
         // Which phase(s)?
-        let scenario = cfg.get(&scen_name).expect(&format!(
-            "Requested scenario {} not found in configuration file",
-            scen_name
-        ));
+        let scenario = cfg.get(&scen_name).unwrap_or_else(|| panic!("Requested scenario {} not found in configuration file",
+            scen_name));
         // eprintln!("{:#?}", scenario);
         eprintln!("Running Scenario {}", scen_name);
 

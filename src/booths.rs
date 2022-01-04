@@ -52,7 +52,7 @@ pub fn factsum(input: usize) -> usize {
     for i in 1..=input {
         output += i.factorial();
     }
-    return output;
+    output
 }
 
 pub fn group_combos(groups: &[&str]) -> Vec<String> {
@@ -68,7 +68,7 @@ pub fn group_combos(groups: &[&str]) -> Vec<String> {
         }
     }
 
-    return combinations;
+    combinations
 }
 
 /// This function exists to avoid a *lot* of string alloc
@@ -84,7 +84,7 @@ pub fn make_combo_tree(groups_count: usize) -> BTreeMap<Vec<usize>, usize> {
         }
     }
 
-    return output;
+    output
 }
 
 /// This represents a row in the polling_places file
@@ -466,10 +466,8 @@ pub fn booth_npps(
         .expect("error writing booths header");
 
     for (bk, bv) in booth_counts.iter().sorted() {
-        let br = booths.get(bk).expect(&format!(
-            "It's really weird, but {:#?} isn't in `booths`.",
-            bk
-        ));
+        let br = booths.get(bk).unwrap_or_else(|| panic!("It's really weird, but {:#?} isn't in `booths`.",
+            bk));
         let mut bdeets = vec![br.PollingPlaceID.to_string(), br.DivisionNm.clone(), br.PollingPlaceNm.clone(), br.Latitude.clone(), br.Longitude.clone()];
         let mut total = 0;
         for i in bv.iter() {

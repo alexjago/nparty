@@ -59,7 +59,7 @@ fn make_html(texts: &HashMap<String, DlItems>) -> String {
         );
     }
 
-    return String::from(template_html).replace("CONTENT", &content);
+    String::from(template_html).replace("CONTENT", &content)
 }
 
 pub fn examine_html(filey: &Path) {
@@ -114,10 +114,8 @@ pub fn download(dldir: &Path) {
             if !dlto.is_file() {
                 eprintln!("Downloading: {}", &dlto.display());
                 let response = reqwest::blocking::get(&link)
-                    .expect(&format!(
-                        "Error downloading {:#?}",
-                        &aspath.file_name().unwrap()
-                    ))
+                    .unwrap_or_else(|_| panic!("Error downloading {:#?}",
+                        &aspath.file_name().unwrap()))
                     .bytes()
                     .unwrap();
                 write(&dlto, response).expect("Error writing file");

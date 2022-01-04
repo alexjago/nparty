@@ -40,13 +40,13 @@ impl ToTicket for BallotNumber {
 
         if self == 0 {
             // base case
-            return String::new();
+            String::new()
         } else {
             let num = self - 1;
             let remainder = num % 26;
             let shift = (num - remainder) / 26;
-            return Self::to_ticket(shift)
-                + &char::from_u32(remainder + 'A' as u32).unwrap().to_string();
+            Self::to_ticket(shift)
+                + &char::from_u32(remainder + 'A' as u32).unwrap().to_string()
         }
     }
 }
@@ -65,13 +65,13 @@ impl ToBallotNumber for TicketString {
             let v = 1 + c.to_ascii_uppercase() as u32 - 'A' as u32;
             res += p * v;
         }
-        return res as BallotNumber;
+        res as BallotNumber
     }
 }
 
 impl ToBallotNumber for &str {
     fn to_number(self) -> BallotNumber {
-        return self.to_string().to_number();
+        self.to_string().to_number()
     }
 }
 
@@ -90,14 +90,14 @@ impl PrettifyNumber for BallotNumber {
             (1000, "thousand"),
         ];
         if self < SCALE[SCALE.len() - 1].0 {
-            return self.to_string();
+            self.to_string()
         } else {
             for s in SCALE.iter() {
                 if self >= s.0 {
                     return format!("{} {}", self / s.0, s.1);
                 }
             }
-            return String::new();
+            String::new()
         }
     }
 }
@@ -314,7 +314,7 @@ where
     }
 
     // We're done!
-    return bigdict;
+    bigdict
 }
 
 /// This represents a row in the party csv file.
@@ -358,7 +358,7 @@ where
         bigdict.insert(pr.party_nm, to_title_case(&pr.party_ab));
     }
 
-    return bigdict;
+    bigdict
 }
 
 // next up is `filter_candidates`
@@ -472,7 +472,7 @@ pub fn filter_candidates(
             }
         }
     }
-    return data;
+    data
 }
 
 trait ReadSeek: Read + Seek {}
@@ -501,18 +501,16 @@ where
 pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read> {
     use std::ffi::OsStr;
     if inpath.exists() && inpath.is_file() {
-        return open_csvz(File::open(inpath).unwrap());
+        open_csvz(File::open(inpath).unwrap())
     } else {
-        let ext = inpath.extension().expect(&format!(
-            "Could not find {:#?} whether compressed or not",
-            inpath.display()
-        ));
+        let ext = inpath.extension().unwrap_or_else(|| panic!("Could not find {:#?} whether compressed or not",
+            inpath.display()));
         if ext == OsStr::new("csv") {
             let newpath = inpath.with_extension("zip");
-            return open_csvz(File::open(newpath).unwrap());
+            open_csvz(File::open(newpath).unwrap())
         } else if ext == OsStr::new("csv") {
             let newpath = inpath.with_extension("csv");
-            return open_csvz(File::open(newpath).unwrap());
+            open_csvz(File::open(newpath).unwrap())
         } else {
             panic!(
                 "Could not find {:#?} whether compressed or not",
@@ -544,7 +542,7 @@ where
         }
         return true;
     }
-    return false;
+    false
 }
 
 /// Get a Writer to a file in a ZIP or die trying!

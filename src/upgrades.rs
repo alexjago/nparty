@@ -32,7 +32,7 @@ where
         let record: DivStates = row.unwrap();
         out.insert(record.div_nm, record.state_ab);
     }
-    return out;
+    out
 }
 
 /// Upgrade a preferences file from 2016 to 2019 format

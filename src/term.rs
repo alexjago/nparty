@@ -65,7 +65,7 @@ pub fn decorate(input: &str, which: &str) -> String {
             output.push_str(d);
         }
     }
-    return output;
+    output
 }
 
 /// Applies a decoration to part of a string
@@ -94,5 +94,5 @@ pub fn decorate_range(input: &str, range: Range<usize>, which: &str) -> String {
 
     output.push_str(last);
 
-    return output;
+    output
 }
