@@ -583,9 +583,9 @@ pub fn cli_scenarios(
 pub fn write_scenarios(
     input: BTreeMap<String, Scenario>,
     outfile: &mut dyn Write,
-) -> std::io::Result<String> {
+) -> Result<(), std::io::Error> {
     let outdoc: Document =
         ser::to_document(&input).expect("Error converting Scenarios to TOML document");
-    write!(outfile, "{}", outdoc)?;
-    todo!()
+    outfile.write_all(outdoc.to_string().as_bytes())?;
+    Ok(())
 }
