@@ -316,7 +316,8 @@ fn do_configure(sm: &clap::ArgMatches) {
     };
 
     let existings: BTreeMap<String, Scenario> = match from_scen {
-        Some(p) => config::get_scenarios(&config::get_cfg_doc_from_path(&p)).expect("le what"),
+        Some(p) => config::get_scenarios(&config::get_cfg_doc_from_path(&p))
+            .expect("Error loading existing scenarios"),
         None => BTreeMap::new(),
     };
 

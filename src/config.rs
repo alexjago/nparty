@@ -14,7 +14,8 @@ use crate::booths::Parties;
 use crate::term::{BOLD, END};
 use crate::utils::{
     filter_candidates, input, open_csvz_from_path, read_party_abbrvs, CandsData, FilteredCandidate,
-    StateAb};
+    StateAb,
+};
 
 // TODO: long term goals to get back to Python equivalent functionality
 // We will support a TOML setup that's otherwise consistent with Python's ConfigParser's
@@ -48,17 +49,29 @@ pub fn get_cfg_doc_from_path(cfgpath: &Path) -> Document {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Scenario {
+    #[serde(rename = "NAME")]
     pub name: String,
+    #[serde(rename = "YEAR")]
     pub year: String,
+    #[serde(rename = "POLLING_PLACES_PATH")]
     pub polling_places: PathBuf,
+    #[serde(rename = "SA1S_BREAKDOWN_PATH")]
     pub sa1s_breakdown: Option<PathBuf>,
+    #[serde(rename = "OUTPUT_DIR")]
     pub output_dir: PathBuf,
+    #[serde(rename = "NPP_BOOTHS_FN")]
     pub npp_booths: PathBuf,
+    #[serde(rename = "SA1S_PREFS_FN")]
     pub sa1s_prefs: Option<PathBuf>,
+    #[serde(rename = "NPP_DISTS_FN")]
     pub npp_dists: Option<PathBuf>,
+    #[serde(rename = "PREFS_PATH")]
     pub prefs_path: PathBuf,
+    #[serde(rename = "SA1S_DISTS_PATH")]
     pub sa1s_dists: Option<PathBuf>,
+    #[serde(rename = "STATE")]
     pub state: StateAb,
+    #[serde(rename = "GROUPS")]
     pub groups: Parties,
     // Optional paths are those for the latter two phases
 }
@@ -77,22 +90,31 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
         }
     }
 
-    for (scenario_key, scenario) in cfg.iter() {
-        let scenario = scenario.as_table().unwrap();
+    for (scenario_key, scenario_raw) in cfg.iter() {
+        eprintln!(
+            "{}\n{}\n{:?}",
+            scenario_key,
+            scenario_raw.is_table_like(),
+            scenario_raw
+        );
+        // let scenario = scenario.as_table().expect("Couldn't construct scenario table on config load");
+        let scenario: &dyn TableLike = scenario_raw
+            .as_table_like()
+            .expect("Couldn't construct scenario table on config load");
         // Iterating over scenarios
         if scenario_key == "DEFAULT" {
             continue;
         }
 
-        // println!("{}, {}", scenario_key, scenario);
-
         // Fair amount of boilerplate follows!
+
+        // NAME always known from scenario directly
         let name = String::from(scenario_key);
 
         /// We are able to abstract out much of the logic into this...
         fn get_attribute<'a, T, F>(
             key: &'a str,
-            scenario: &'a Table,
+            scenario: &'a dyn TableLike,
             defaults: &'a HashMap<&str, &Item>,
             conversion_fn: F,
         ) -> Option<T>
@@ -106,6 +128,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
                 .map(conversion_fn)
         }
 
+        // Non-Optional: YEAR
         let year =
             get_attribute("YEAR", scenario, &defaults, String::from).ok_or("Missing YEAR")?;
 
@@ -139,7 +162,8 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
         let sa1s_dists = get_attribute("SA1S_DISTS_PATH", scenario, &defaults, PathBuf::from);
 
         // Not optional: STATE
-        let state: StateAb = get_attribute("STATE", scenario, &defaults, StateAb::from).ok_or("Missing STATE")?;
+        let state: StateAb =
+            get_attribute("STATE", scenario, &defaults, StateAb::from).ok_or("Missing STATE")?;
 
         // Really the only complicated parse is the GROUPS.
         let mut groups: Parties = BTreeMap::new();
@@ -254,7 +278,7 @@ where
     if known.is_some() {
         return known.clone();
     } else if existing.is_some() {
-        let ex = existing.unwrap().clone();
+        let ex = existing?.clone();
         let maybe = input(&format!("Enter {} [default: {:?}]: ", name, ex)).ok()?;
         if maybe.is_empty() {
             return Some(ex);
@@ -485,11 +509,16 @@ pub fn cli_scenarios(
 }
 
 // TODO: function to write scenarios back out
+
+/// Write an entire BTreeMap of Scenarios back out to TOML
 pub fn write_scenarios(
     input: BTreeMap<String, Scenario>,
     outfile: &mut dyn Write,
 ) -> Result<(), std::io::Error> {
-    let outdoc: Document = ser::to_document(&input).expect("Error converting Scenario to TOML");
-    outfile.write_all(outdoc.to_string().as_bytes())?;
+    // we want the top-level tables in the doc to use [key] formatting and for groups to use [key.groups] formatting
+    // so the "pretty" formatting gives us that
+    // (this is important, because non-pretty results in inline tables)
+    let outstring = ser::to_string_pretty(&input).expect("Error converting Scenario to TOML");
+    outfile.write_all(outstring.as_bytes())?;
     Ok(())
 }
