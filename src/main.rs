@@ -144,7 +144,7 @@ fn run(sm: &clap::ArgMatches) {
                 &scenario.npp_booths,
                 scenario.sa1s_breakdown.as_ref().unwrap(),
                 scenario.sa1s_prefs.as_ref().unwrap(),
-            );
+            ).expect("error while projecting");
         } else if sm.is_present("combine") && can_combine {
             aggregator::aggregate(
                 scenario.sa1s_prefs.as_ref().unwrap(),
@@ -170,7 +170,7 @@ fn run(sm: &clap::ArgMatches) {
                     &scenario.npp_booths,
                     scenario.sa1s_breakdown.as_ref().unwrap(),
                     scenario.sa1s_prefs.as_ref().unwrap(),
-                );
+                ).expect("error while projecting");
             }
             if can_combine {
                 aggregator::aggregate(

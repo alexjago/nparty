@@ -1,7 +1,9 @@
 use super::booths::{group_combos, Parties};
 use super::utils::StateAb;
+use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::fs::create_dir_all;
+
 /// Projection phase
 /// This file corresponds to `SA1s_Multiplier.py`
 
@@ -38,7 +40,7 @@ pub fn project(
     npp_booths_path: &Path,
     sa1_breakdown_path: &Path,
     sa1_prefs_path: &Path,
-) {
+) -> Result<()> {
     eprintln!("\tProjecting results onto SA1s");
     // potential soundness issue: is this going to work out the same way?
     // BTreeMap for Parties in general should fix that
@@ -67,15 +69,14 @@ pub fn project(
     let mut booths_rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .has_headers(true)
-        .from_path(npp_booths_path)
-        .unwrap();
+        .from_path(npp_booths_path)?;
 
     // Maybe we can deserialize to boothsfields?
     // That's what we want to do...
     // well, we can mostly do that.
 
     for record in booths_rdr.records() {
-        let row = record.unwrap();
+        let row = record?;
         let divbooth = row[1].to_owned() + "_" + &row[2];
         let mut boothmeta: Vec<String> = Vec::with_capacity(5);
 
@@ -103,22 +104,32 @@ pub fn project(
     let mut sa1_rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .has_headers(true)
-        .from_path(sa1_breakdown_path)
-        .unwrap();
+        .from_path(sa1_breakdown_path)?;
 
     let mut outputn: BTreeMap<String, Vec<f64>> = BTreeMap::new(); // Our numerical ultimate output. Indexed by ID
 
     let mut row = csv::StringRecord::new();
 
-    while sa1_rdr.read_record(&mut row).unwrap() {
-        let id = row.get(sfl("SA1_id")).unwrap().to_owned();
+    while sa1_rdr.read_record(&mut row)? {
+        let id = row
+            .get(sfl("SA1_id"))
+            .context("Missing SA1_id field in record")?
+            .to_owned();
 
         let divbooth = row[sfl("div_nm")].to_owned() + "_" + &row[sfl("pp_nm")];
 
-        if row.get(sfl("state_ab")).unwrap() != state.to_string() {
+        if row
+            .get(sfl("state_ab"))
+            .context("Missing state_ab field in record")?
+            != state.to_string()
+        {
             continue;
         // All SA1s nationwide are in the one file - so any row with the wrong state can be safely skipped.
-        } else if row.get(sfl("year")).unwrap() != year {
+        } else if row
+            .get(sfl("year"))
+            .context("Missing year field in record")?
+            != year
+        {
             println!(
                 "Problem in `{}`: Unsupported election year: {}. Exiting.",
                 sa1_breakdown_path.display(),
@@ -127,12 +138,15 @@ pub fn project(
             process::exit(1); // However, the wrong year is definitely cause for concern. Bail.
         }
 
-        let mut output_row: Vec<f64> = vec![0.0_f64; combinations.len() + 1]; // one more for total
-        if outputn.contains_key(&id) {
-            output_row = outputn.get(&id).unwrap().clone();
-        }
+        let mut output_row = outputn
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| vec![0.0_f64; combinations.len() + 1]);
 
-        let sa1_booth_votes: f64 = row.get(sfl("votes")).unwrap().parse::<f64>().unwrap_or(0.0);
+        let sa1_booth_votes: f64 = row
+            .get(sfl("votes"))
+            .and_then(|x| x.parse::<f64>().ok())
+            .unwrap_or(0.0_f64);
 
         // This scenario occurs when there are no formal Senate votes at a booth
         // Thus they don't show up in the output of the previous stage
@@ -159,8 +173,8 @@ pub fn project(
     // having summed it all up...
     let outlen = boothsfields.len();
 
-    create_dir_all(sa1_prefs_path.parent().unwrap()).unwrap();
-    let mut sa1_wtr = csv::Writer::from_path(sa1_prefs_path).unwrap();
+    create_dir_all(sa1_prefs_path.parent().context("couldn't perform path conversion")?)?;
+    let mut sa1_wtr = csv::Writer::from_path(sa1_prefs_path)?;
 
     let mut header = vec![String::from("SA1_id")];
     #[allow(clippy::redundant_clone)]
@@ -168,7 +182,7 @@ pub fn project(
     header.push(String::from("Total"));
     sa1_wtr
         .write_record(header)
-        .expect("error writing SA1_prefs header");
+        .context("error writing SA1_prefs header")?;
 
     for (id, row) in outputn.iter() {
         let mut out: Vec<String> = Vec::with_capacity(outlen);
@@ -178,8 +192,10 @@ pub fn project(
         }
         sa1_wtr
             .write_record(out)
-            .expect("error writing SA1_prefs line");
+            .context("error writing SA1_prefs line")?;
     }
 
-    sa1_wtr.flush().expect("error finalising SA1_prefs");
+    sa1_wtr.flush().context("error finalising SA1_prefs")?;
+
+    Ok(())
 }
