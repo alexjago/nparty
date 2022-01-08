@@ -36,7 +36,13 @@ pub fn aggregate(
         .flexible(true)
         .has_headers(true)
         .from_path(sa1_prefs_path)
-        .context("Could not find SA1s preferences file!")?;
+        .with_context(|| {
+            format!(
+                "Could not find SA1s to preferences file, does this path exist?\n\t{}",
+                sa1_prefs_path.display()
+            )
+        })?;
+
     for record in sp_rdr.records() {
         let row = record?;
         let id = row.get(0).context("empty row in SA1 prefs file")?;
@@ -60,7 +66,12 @@ pub fn aggregate(
         .flexible(true)
         .has_headers(true)
         .from_path(sa1_districts_path)
-        .context("Could not find SA1s to districts correspondence file")?;
+        .with_context(|| {
+            format!(
+                "Could not find SA1s to districts correspondence file, does this path exist?\n\t{}",
+                sa1_districts_path.display()
+            )
+        })?;
 
     for record in sd_rdr.records() {
         let row = record?;
@@ -158,7 +169,7 @@ pub fn aggregate(
         for i in row {
             out.push(i.to_string());
         }
-        eprintln!("{:?}", out);
+        // eprintln!("{:?}", out);
         dist_wtr
             .write_record(out)
             .context("error writing npp_dists line")?;

@@ -18,8 +18,8 @@ extern crate url;
 extern crate zip;
 extern crate zip_extensions;
 
-use clap::{load_yaml, App};
 use anyhow::{bail, Context, Result};
+use clap::{load_yaml, App};
 use config::{KnownConfigOptions, Scenario};
 use utils::ToStateAb;
 
@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
             sm.value_of_os("configfile")
                 .context("Error with configuration-file path.")?,
         );
-        config::list_scenarios(cfgpath);
+        config::list_scenarios(cfgpath)?;
     } else if let Some(sm) = m.subcommand_matches("data") {
         if sm.is_present("download") {
             let dldir: &Path = Path::new(
@@ -76,25 +76,22 @@ fn main() -> anyhow::Result<()> {
         if let Some(ssm) = sm.subcommand_matches("prefs") {
             do_upgrade_prefs(ssm)?;
         } else {
-            todo!();
+            bail!("this functionality has not yet been implemented");
         }
     } else if let Some(sm) = m.subcommand_matches("configure") {
         do_configure(sm)?;
     } else {
-        bail!("Not yet implemented");
+        bail!("this functionality has not yet been implemented");
     }
     Ok(())
 }
 
 // Do the heavy lifting of nparty run so as to keep things clean
 fn run(sm: &clap::ArgMatches) -> anyhow::Result<()> {
-    // eprintln!("{:#?}", &sm);
-
     let cfgpath: &Path = Path::new(
         sm.value_of_os("configfile")
             .context("Error with configuration-file path.")?,
     );
-    // eprintln!("{:#?}", &cfgpath);
 
     // Get data out of config
     let cfg = config::get_scenarios(&config::get_cfg_doc_from_path(cfgpath)?)?;
@@ -112,33 +109,42 @@ fn run(sm: &clap::ArgMatches) -> anyhow::Result<()> {
     }
 
     for scen_name in scenario_names {
-        // Which phase(s)?
-        let scenario = cfg.get(&scen_name).unwrap_or_else(|| {
-            panic!(
-                "Requested scenario {} not found in configuration file",
+        let scenario = cfg.get(&scen_name).with_context(|| {
+            format!(
+                "Requested scenario {} not found in configuration file.",
                 scen_name
             )
-        });
-        // eprintln!("{:#?}", scenario);
+        })?;
         eprintln!("Running Scenario {}", scen_name);
+        eprintln!("{:#?}", scenario);
 
         let sa1b = scenario.sa1s_breakdown.as_ref();
         let sa1p = scenario.sa1s_prefs.as_ref();
         let sa1d = scenario.sa1s_dists.as_ref();
         let nppd = scenario.npp_dists.as_ref();
-        let can_project = sa1p.is_some() && sa1b.is_some();
-        let can_combine = sa1p.is_some() && sa1d.is_some() && nppd.is_some();
+        let can_project = sa1p.is_some()
+            && sa1b.is_some()
+            && !sm.is_present("distribute")
+            && !sm.is_present("combine");
+        let can_combine = sa1p.is_some()
+            && sa1d.is_some()
+            && nppd.is_some()
+            && !sm.is_present("distribute")
+            && !sm.is_present("project");
+        let can_distribute =
+            sm.is_present("distribute") || (!sm.is_present("combine") && !sm.is_present("project"));
 
-        // TODO: make this intelligent - i.e., don't default to -r
-        if sm.is_present("distribute") {
+        if can_distribute {
             booths::booth_npps(
                 &scenario.groups,
                 &scenario.state,
                 &scenario.prefs_path,
                 &scenario.polling_places,
                 &scenario.npp_booths,
-            )?;
-        } else if sm.is_present("project") && can_project {
+            )
+            .context("Could not perform distribution step; stopping.")?;
+        }
+        if can_project {
             multiplier::project(
                 &scenario.groups,
                 &scenario.state,
@@ -146,56 +152,33 @@ fn run(sm: &clap::ArgMatches) -> anyhow::Result<()> {
                 &scenario.npp_booths,
                 sa1b.unwrap(),
                 sa1p.unwrap(),
-            )?;
-        } else if sm.is_present("combine") && can_combine {
+            )
+            .context("Could not perform projection step; stopping.")?;
+        }
+        if can_combine {
             aggregator::aggregate(
                 sa1p.unwrap(),
                 sa1d.unwrap(),
                 nppd.unwrap(),
                 sm.is_present("js"),
                 &scenario.groups,
-            )?;
-        } else {
-            // run all phases
-            booths::booth_npps(
-                &scenario.groups,
-                &scenario.state,
-                &scenario.prefs_path,
-                &scenario.polling_places,
-                &scenario.npp_booths,
-            )?;
-            if can_project {
-                multiplier::project(
-                    &scenario.groups,
-                    &scenario.state,
-                    &scenario.year,
-                    &scenario.npp_booths,
-                    sa1b.unwrap(),
-                    sa1p.unwrap(),
-                )?;
-            }
-            if can_combine {
-                aggregator::aggregate(
-                    sa1p.unwrap(),
-                    sa1p.unwrap(),
-                    nppd.unwrap(),
-                    sm.is_present("js"),
-                    &scenario.groups,
-                )?;
-            }
+            )
+            .context("Could not perform combination step; stopping.")?;
         }
     }
-
     Ok(())
 }
 
-fn do_upgrade_prefs(sm: &clap::ArgMatches) -> anyhow::Result<()>{
+fn do_upgrade_prefs(sm: &clap::ArgMatches) -> anyhow::Result<()> {
     let candspath: &Path = Path::new(
         sm.value_of_os("candidates")
-            .context("Error with candidates-file path.")?,
+            .context("Error with candidates-file path, does it exist?")?,
     );
     let inpath: &Path = Path::new(sm.value_of_os("input").context("Error with input path.")?);
-    let outpath: &Path = Path::new(sm.value_of_os("output").context("Error with output path.")?);
+    let outpath: &Path = Path::new(
+        sm.value_of_os("output")
+            .context("Error with output path.")?,
+    );
     let suffix: &OsStr = sm.value_of_os("suffix").context("missing suffix")?;
     let filter: &str = sm.value_of("filter").context("missing filter")?;
 
@@ -203,9 +186,12 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) -> anyhow::Result<()>{
 
     if inpath.is_dir() {
         if !outpath.is_dir() {
-            bail!("Error: input path is a directory but output path is not.");
+            bail!("Input path is a directory but output path is not.");
         } else {
-            let mut query: String = inpath.to_str().map(String::from).context("Path conversion error")?;
+            let mut query: String = inpath
+                .to_str()
+                .map(String::from)
+                .context("Path conversion error")?;
             query.push_str(filter);
 
             let ips: Vec<PathBuf> = glob::glob(&query)?.filter_map(Result::ok).collect();
@@ -231,22 +217,26 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) -> anyhow::Result<()>{
     } else {
         let ip = PathBuf::from(inpath);
         if outpath.is_dir() {
-            paths.push((ip, outpath.join(inpath.file_name().context("no file name")?)));
+            paths.push((
+                ip,
+                outpath.join(inpath.file_name().context("no file name")?),
+            ));
         } else {
             paths.push((ip, PathBuf::from(outpath)));
         }
     }
 
     for (ipath, opath) in &paths {
-        let candsdata =
-            utils::read_candidates(File::open(&candspath).context("Couldn't open candidates file")?);
+        let candsdata = utils::read_candidates(
+            File::open(&candspath).context("Couldn't open candidates file")?,
+        )?;
         let divstates = upgrades::divstate_creator(
             File::open(&candspath).context("Couldn't open candidates file")?,
         );
 
         eprintln!("ipath: {} \t opath: {}", ipath.display(), opath.display());
 
-        let era = upgrades::era_sniff(&mut utils::open_csvz_from_path(ipath))
+        let era = upgrades::era_sniff(&mut utils::open_csvz_from_path(ipath)?)
             .context("Error determining era of input.")?;
 
         if era == 2016 {
@@ -264,8 +254,8 @@ fn do_upgrade_prefs(sm: &clap::ArgMatches) -> anyhow::Result<()>{
             } else {
                 eprintln!("Upgrading...");
                 upgrades::upgrade_prefs_16_19(
-                    &mut utils::open_csvz_from_path(ipath),
-                    &mut utils::get_zip_writer_to_path(opath, "csv"),
+                    &mut utils::open_csvz_from_path(ipath)?,
+                    &mut utils::get_zip_writer_to_path(opath, "csv")?,
                     &candsdata,
                     &divstates,
                 );
@@ -317,14 +307,15 @@ fn do_configure(sm: &clap::ArgMatches) -> anyhow::Result<()> {
 
     let existing = existings.values().next();
 
-    let candsfile = File::open(candspath).context("Error opening candidates file")?;
-    let candidates = utils::read_candidates(candsfile);
+    let candsfile = File::open(candspath)?;
+    let candidates = utils::read_candidates(candsfile)?;
 
-    let out =
-        config::cli_scenarios(existing, &candidates, &kco).context("Error creating configuration")?;
+    let out = config::cli_scenarios(existing, &candidates, &kco)
+        .context("Configuration could not be created.")?;
     eprintln!("{:#?}", out);
 
-    let mut outfile = File::create(outpath).context("Error opening configuration file for writing")?;
-    config::write_scenarios(out, &mut outfile).context("Error writing configuration file")?;
+    let mut outfile =
+        File::create(outpath)?;
+    config::write_scenarios(out, &mut outfile)?;
     Ok(())
 }

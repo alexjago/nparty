@@ -211,7 +211,7 @@ pub fn booth_npps(
     let mut prefs_rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .escape(Some(b'\\')) //.trim(csv::Trim::All)
-        .from_reader(open_csvz_from_path(formal_prefs_path));
+        .from_reader(open_csvz_from_path(formal_prefs_path)?);
 
     let prefs_headers = prefs_rdr.headers()?.clone();
     // eprintln!("Prefs headers: {:?}", prefs_headers.as_slice());
@@ -249,7 +249,12 @@ pub fn booth_npps(
     }
     let cand_nums = cand_nums; // make immutable now
 
-    eprintln!("\nCandidate numbers: \n{:#?}", cand_nums);
+    eprintln!(
+        "\nCandidate numbers: \n{:?}",
+        cand_nums
+            .iter()
+            .sorted_by(|(_, av), (_, bv)| Ord::cmp(av, bv))
+    );
 
     // finally, some lookups for the groups of interest...
 
@@ -284,9 +289,9 @@ pub fn booth_npps(
         groups_btl.insert(p_idx, bcands);
     }
 
-    eprintln!("\nFull Groups: {:#?}", groups);
-    eprintln!("ATL Groups: {:#?}", groups_atl);
-    eprintln!("BTL Groups: {:#?}", groups_btl);
+    eprintln!("\nFull Groups: {:?}", groups);
+    eprintln!("ATL Groups: {:?}", groups_atl);
+    eprintln!("BTL Groups: {:?}", groups_btl);
 
     eprintln!();
 

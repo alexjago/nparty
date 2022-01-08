@@ -1,5 +1,5 @@
 #![allow(clippy::upper_case_acronyms)]
-// use log;
+use anyhow::{Context, Result};
 use inflector::cases::titlecase::to_title_case;
 use std::char;
 use std::collections::HashMap;
@@ -215,7 +215,7 @@ struct CandidateRecord {
     pub party_ballot_nm: String,
 }
 
-pub fn read_candidates<T>(candsfile: T) -> CandsData
+pub fn read_candidates<T>(candsfile: T) -> Result<CandsData>
 where
     T: Read,
 {
@@ -229,7 +229,7 @@ where
     let mut rdr = csv::Reader::from_reader(candsfile);
 
     for row in rdr.deserialize() {
-        let cand_record: CandidateRecord = row.unwrap();
+        let cand_record: CandidateRecord = row.context("Could not understand a row in the candidates file")?;
 
         if cand_record.nom_ty != NominationType::S {
             continue;
@@ -242,22 +242,22 @@ where
 
         if !bigdict
             .get(&cand_record.state_ab)
-            .unwrap()
+            .context("TOCTOU")?
             .contains_key(&cand_record.ticket)
         {
             // create column
             bigdict
                 .get_mut(&cand_record.state_ab)
-                .unwrap()
+                .context("TOCTOU")?
                 .insert(cand_record.ticket.clone(), Ticket::new());
 
             // Create pseudocandidate if needed
             if cand_record.ticket != "UG" {
                 bigdict
                     .get_mut(&cand_record.state_ab)
-                    .unwrap()
+                    .context("TOCTOU")?
                     .get_mut(&cand_record.ticket)
-                    .unwrap()
+                    .context("TOCTOU")?
                     .insert(
                         0,
                         Candidate {
@@ -272,9 +272,9 @@ where
 
         bigdict
             .get_mut(&cand_record.state_ab)
-            .unwrap()
+            .context("TOCTOU")?
             .get_mut(&cand_record.ticket)
-            .unwrap()
+            .context("TOCTOU")?
             .insert(
                 cand_record.ballot_position,
                 Candidate {
@@ -294,15 +294,15 @@ where
 
         for tnum in 1..ticket_count {
             let ticket = (tnum as BallotNumber).to_ticket();
-            let candidate_count = state.get(&ticket).unwrap().len();
+            let candidate_count = state.get(&ticket).context("TOCTOU")?.len();
             for cnum in 1..candidate_count {
                 // easiest way to skip pseuds
                 ballot_number += 1;
                 state
                     .get_mut(&ticket)
-                    .unwrap()
+                    .context("TOCTOU")?
                     .get_mut(&(cnum as BallotPosition))
-                    .unwrap()
+                    .context("TOCTOU")?
                     .ballot_number = ballot_number;
             }
         }
@@ -312,16 +312,16 @@ where
                 ballot_number += 1;
                 state
                     .get_mut("UG")
-                    .unwrap()
+                    .context("TOCTOU")?
                     .get_mut(&(cnum as BallotPosition))
-                    .unwrap()
+                    .context("TOCTOU")?
                     .ballot_number = ballot_number;
             }
         }
     }
 
     // We're done!
-    bigdict
+    Ok(bigdict)
 }
 
 /// This represents a row in the party csv file.
@@ -339,7 +339,7 @@ pub type PartyData = HashMap<String, String>;
 
 /// Reads party abbreviations from the relevant file...
 /// -> {(party name on ballot | party abbreviation) : party abbreviation}
-pub fn read_party_abbrvs<T>(partyfile: T) -> PartyData
+pub fn read_party_abbrvs<T>(partyfile: T) -> Result<PartyData>
 where
     T: Read,
 {
@@ -357,7 +357,7 @@ where
         if rowcounter <= 2 {
             continue; // skip useless metadata starter rows
         }
-        let pr: PartyRecord = result.unwrap();
+        let pr: PartyRecord = result.context("could not understand row in party-details file")?;
 
         if !pr.registered_party_ab.is_empty() {
             bigdict.insert(pr.registered_party_ab, to_title_case(&pr.party_ab));
@@ -365,7 +365,7 @@ where
         bigdict.insert(pr.party_nm, to_title_case(&pr.party_ab));
     }
 
-    bigdict
+    Ok(bigdict)
 }
 
 // next up is `filter_candidates`
@@ -487,12 +487,12 @@ trait ReadSeek: Read + Seek {}
 /// Opens a file, possibly zipped, for reading.
 /// If the zipfile contains more than one file, the first will be returned.
 /// Performance note: has to unzip and return the entire file.
-pub fn open_csvz<T: 'static>(mut infile: T) -> Box<dyn Read>
+pub fn open_csvz<T: 'static>(mut infile: T) -> Result<Box<dyn Read>>
 where
     T: Read + Seek,
 {
-    if !is_zip(&mut infile) {
-        Box::new(infile)
+    if !(is_zip(&mut infile)?) {
+        Ok(Box::new(infile))
     } else {
         let mut zippah = zip::ZipArchive::new(infile).expect("error establishing the ZIP");
         let mut zippy = zippah.by_index(0).expect("no file in ZIP");
@@ -500,15 +500,15 @@ where
         let zs = zippy.size() as usize;
         let mut bigbuf: Vec<u8> = Vec::with_capacity(zs);
         zippy.read_to_end(&mut bigbuf).expect("Error reading ZIP");
-        Box::new(Cursor::new(bigbuf))
+        Ok(Box::new(Cursor::new(bigbuf)))
     }
 }
 
 /// opens blah.csv OR blah.zip
-pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read> {
+pub fn open_csvz_from_path(inpath: &path::Path) -> Result<Box<dyn Read>> {
     use std::ffi::OsStr;
-    if inpath.exists() && inpath.is_file() {
-        open_csvz(File::open(inpath).unwrap())
+    Ok(if inpath.exists() && inpath.is_file() {
+        open_csvz(File::open(inpath)?)?
     } else {
         let ext = inpath.extension().unwrap_or_else(|| {
             panic!(
@@ -518,47 +518,47 @@ pub fn open_csvz_from_path(inpath: &path::Path) -> Box<dyn Read> {
         });
         if ext == OsStr::new("csv") {
             let newpath = inpath.with_extension("zip");
-            open_csvz(File::open(newpath).unwrap())
+            open_csvz(File::open(newpath)?)?
         } else if ext == OsStr::new("csv") {
             let newpath = inpath.with_extension("csv");
-            open_csvz(File::open(newpath).unwrap())
+            open_csvz(File::open(newpath)?)?
         } else {
             panic!(
                 "Could not find {:#?} whether compressed or not",
                 inpath.display()
             );
         }
-    }
+    })
 }
 
 /// Peeks at the contents to check the magic number
 /// slightly adapted from zip-extensions
 /// to operate on a `Read+Seek` rather than a full `File`
-pub fn is_zip<T>(infile: &mut T) -> bool
+pub fn is_zip<T>(infile: &mut T) -> Result<bool>
 where
     T: Read + Seek,
 {
     const ZIP_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
-    let pos = infile.seek(SeekFrom::Current(0)).unwrap();
+    let pos = infile.seek(SeekFrom::Current(0))?;
     let mut buffer: [u8; 4] = [0; 4];
-    let bytes_read = infile.read(&mut buffer).unwrap();
+    let bytes_read = infile.read(&mut buffer)?;
     infile
         .seek(Start(pos))
-        .expect("couldn't seek back to the start after testing whether a file was a ZIP"); // revert
+        .context("couldn't seek back to the start after testing whether a file was a ZIP")?; // revert
     if bytes_read == buffer.len() && bytes_read == ZIP_SIGNATURE.len() {
         for i in 0..ZIP_SIGNATURE.len() {
             if buffer[i] != ZIP_SIGNATURE[i] {
-                return false;
+                return Ok(false);
             }
         }
-        return true;
+        return Ok(true);
     }
-    false
+    Ok(false)
 }
 
 /// Get a Writer to a file in a ZIP or die trying!
 /// Will create a ZIP file with a single inner file, named the same as the ZIP bar the extension.
-pub fn get_zip_writer_to_path(outpath: &path::Path, inner_ext: &str) -> zip::ZipWriter<File> {
+pub fn get_zip_writer_to_path(outpath: &path::Path, inner_ext: &str) -> Result<zip::ZipWriter<File>> {
     let mut outfile = zip::ZipWriter::new(
         File::create(&outpath.with_extension("zip")).expect("Couldn't create new output file"),
     );
@@ -567,13 +567,12 @@ pub fn get_zip_writer_to_path(outpath: &path::Path, inner_ext: &str) -> zip::Zip
             outpath
                 .with_extension(inner_ext)
                 .file_name()
-                .unwrap()
+                .context("no file name in path")?
                 .to_str()
-                .unwrap(),
+                .context("could not convert path to string")?,
             zip::write::FileOptions::default(),
-        )
-        .unwrap();
-    outfile
+        )?;
+    Ok(outfile)
 }
 
 // Credit to /u/Ophekkis

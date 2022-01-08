@@ -1,6 +1,7 @@
 //! This file translates Configuration.py
 //! Generation and loading of configuration files.
 
+use anyhow::{bail, Context, Result};
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::read_to_string;
@@ -8,7 +9,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use tabwriter::TabWriter;
 use toml_edit::*;
-use anyhow::{Context, Result, bail};
 
 use crate::booths::Parties;
 use crate::term::{BOLD, END};
@@ -41,10 +41,10 @@ use crate::utils::{
 
 /// Does what it says on the tin (or at least, the function signature).
 pub fn get_cfg_doc_from_path(cfgpath: &Path) -> Result<Document> {
-    Ok(read_to_string(&cfgpath)
-        .context("Error reading config file")?
+    read_to_string(&cfgpath)
+        .context("Config file could not be read")?
         .parse::<Document>()
-        .context("Error parsing config file")?)
+        .context("Config file could not be parsed")
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -91,12 +91,12 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
     }
 
     for (scenario_key, scenario_raw) in cfg.iter() {
-        eprintln!(
-            "{}\n{}\n{:?}",
-            scenario_key,
-            scenario_raw.is_table_like(),
-            scenario_raw
-        );
+        // eprintln!(
+        //     "{}\n{}\n{:?}",
+        //     scenario_key,
+        //     scenario_raw.is_table_like(),
+        //     scenario_raw
+        // );
         // let scenario = scenario.as_table().context("Couldn't construct scenario table on config load")?;
         let scenario: &dyn TableLike = scenario_raw
             .as_table_like()
@@ -220,11 +220,11 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
 // }
 
 /// this function handles `nparty list`
-pub fn list_scenarios(cfgpath: &Path) {
+pub fn list_scenarios(cfgpath: &Path) -> Result<()> {
     let headers = "Scenario\tPreferred Parties\tPlace\tYear";
     let mut output = Vec::new();
-    let doc = get_cfg_doc_from_path(cfgpath).unwrap();
-    let scenarios = get_scenarios(&doc).unwrap();
+    let doc = get_cfg_doc_from_path(cfgpath)?;
+    let scenarios = get_scenarios(&doc)?;
     for (name, scenario) in scenarios {
         let state = scenario.state.to_string();
         let groups = scenario.groups.keys().join(" v. ");
@@ -234,12 +234,12 @@ pub fn list_scenarios(cfgpath: &Path) {
 
     if atty::is(atty::Stream::Stdout) {
         let mut tw = TabWriter::new(vec![]);
-        writeln!(&mut tw, "{}", headers).unwrap();
+        writeln!(&mut tw, "{}", headers)?;
         for i in output {
-            writeln!(&mut tw, "{}", i).unwrap();
+            writeln!(&mut tw, "{}", i)?;
         }
-        tw.flush().unwrap();
-        let output = String::from_utf8(tw.into_inner().unwrap()).unwrap();
+        tw.flush()?;
+        let output = String::from_utf8(tw.into_inner()?)?;
         let firstnewline = output.find('\n').unwrap();
         let hline = &output[0..firstnewline];
         let rline = &output[firstnewline..output.len()];
@@ -250,6 +250,7 @@ pub fn list_scenarios(cfgpath: &Path) {
             println!("{}", i);
         }
     }
+    Ok(())
 }
 
 pub struct KnownConfigOptions {
@@ -375,8 +376,8 @@ pub fn cli_scenarios(
             false,
         )
         .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
-        let party_details_file = open_csvz_from_path(&party_details);
-        let party_abbrvs = read_party_abbrvs(party_details_file);
+        let party_details_file = open_csvz_from_path(&party_details)?;
+        let party_abbrvs = read_party_abbrvs(party_details_file)?;
 
         let state = get_option_cli(
             "state or territory",
@@ -511,10 +512,7 @@ pub fn cli_scenarios(
 // TODO: function to write scenarios back out
 
 /// Write an entire BTreeMap of Scenarios back out to TOML
-pub fn write_scenarios(
-    input: BTreeMap<String, Scenario>,
-    outfile: &mut dyn Write,
-) -> Result<()> {
+pub fn write_scenarios(input: BTreeMap<String, Scenario>, outfile: &mut dyn Write) -> Result<()> {
     // we want the top-level tables in the doc to use [key] formatting and for groups to use [key.groups] formatting
     // so the "pretty" formatting gives us that
     // (this is important, because non-pretty results in inline tables)
