@@ -1,6 +1,6 @@
 use super::booths::{group_combos, Parties};
 use super::utils::StateAb;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::collections::BTreeMap;
 use std::fs::create_dir_all;
 
@@ -130,12 +130,12 @@ pub fn project(
             .context("Missing year field in record")?
             != year
         {
-            println!(
+            // However, the wrong year is definitely cause for concern. Bail.
+            bail!(
                 "Problem in `{}`: Unsupported election year: {}. Exiting.",
                 sa1_breakdown_path.display(),
                 year
             );
-            process::exit(1); // However, the wrong year is definitely cause for concern. Bail.
         }
 
         let mut output_row = outputn
@@ -173,7 +173,11 @@ pub fn project(
     // having summed it all up...
     let outlen = boothsfields.len();
 
-    create_dir_all(sa1_prefs_path.parent().context("couldn't perform path conversion")?)?;
+    create_dir_all(
+        sa1_prefs_path
+            .parent()
+            .context("couldn't perform path conversion")?,
+    )?;
     let mut sa1_wtr = csv::Writer::from_path(sa1_prefs_path)?;
 
     let mut header = vec![String::from("SA1_id")];
