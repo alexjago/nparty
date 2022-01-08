@@ -6,9 +6,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::read_to_string;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::result::Result;
 use tabwriter::TabWriter;
 use toml_edit::*;
+use anyhow::{Context, Result, bail};
 
 use crate::booths::Parties;
 use crate::term::{BOLD, END};
@@ -32,19 +32,19 @@ use crate::utils::{
 // We're keeping defaults though.
 
 /// Quickly dump a configuration from a file
-// pub fn cfgdump(cfgpath: &Path) {
+// pub fn cfgdump(cfgpath: &Path) -> Result<()> {
 //     // load 'er up
-//     let doc = get_cfg_doc_from_path(cfgpath);
+//     let doc = get_cfg_doc_from_path(cfgpath)?;
 //     println!("{:#?}", doc.as_table());
+//     Ok(())
 // }
 
 /// Does what it says on the tin (or at least, the function signature).
-/// Will panic with relevant error messages if something goes wrong.  
-pub fn get_cfg_doc_from_path(cfgpath: &Path) -> Document {
-    read_to_string(&cfgpath)
-        .expect("Error reading config file")
+pub fn get_cfg_doc_from_path(cfgpath: &Path) -> Result<Document> {
+    Ok(read_to_string(&cfgpath)
+        .context("Error reading config file")?
         .parse::<Document>()
-        .expect("Error parsing config file")
+        .context("Error parsing config file")?)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -78,7 +78,7 @@ pub struct Scenario {
 
 /// Get all the Scenarios, with defaults suitably propogated and paths ready to use!
 /// This function can panic (but shouldn't).
-pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'static str> {
+pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
     let mut out: BTreeMap<String, Scenario> = BTreeMap::new();
     let cfg = cfg.as_table();
 
@@ -97,10 +97,10 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
             scenario_raw.is_table_like(),
             scenario_raw
         );
-        // let scenario = scenario.as_table().expect("Couldn't construct scenario table on config load");
+        // let scenario = scenario.as_table().context("Couldn't construct scenario table on config load")?;
         let scenario: &dyn TableLike = scenario_raw
             .as_table_like()
-            .expect("Couldn't construct scenario table on config load");
+            .context("Couldn't construct scenario table on config load")?;
         // Iterating over scenarios
         if scenario_key == "DEFAULT" {
             continue;
@@ -130,23 +130,23 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
 
         // Non-Optional: YEAR
         let year =
-            get_attribute("YEAR", scenario, &defaults, String::from).ok_or("Missing YEAR")?;
+            get_attribute("YEAR", scenario, &defaults, String::from).context("Missing YEAR")?;
 
         // Non-Optional paths: POLLING_PLACES_PATH, OUTPUT_DIR, NPP_BOOTHS_FN, PREFS_PATH
 
         let polling_places =
             get_attribute("POLLING_PLACES_PATH", scenario, &defaults, PathBuf::from)
-                .ok_or("Missing POLLING_PLACES_PATH")?;
+                .context("Missing POLLING_PLACES_PATH")?;
 
         let output_dir = get_attribute("OUTPUT_DIR", scenario, &defaults, PathBuf::from)
-            .ok_or("Missing OUTPUT_DIR")?;
+            .context("Missing OUTPUT_DIR")?;
 
         let npp_booths = get_attribute("NPP_BOOTHS_FN", scenario, &defaults, PathBuf::from)
             .map(|x| output_dir.clone().join(&name).join(&x))
-            .ok_or("Missing NPP_BOOTHS_FN")?;
+            .context("Missing NPP_BOOTHS_FN")?;
 
         let prefs_path = get_attribute("PREFS_PATH", scenario, &defaults, PathBuf::from)
-            .ok_or("Missing PREFS_PATH")?;
+            .context("Missing PREFS_PATH")?;
 
         // Optional Paths: SA1S_BREAKDOWN_PATH, SA1S_PREFS_FN, NPP_DISTS_FN, SA1S_DISTS_PATH
 
@@ -163,7 +163,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
 
         // Not optional: STATE
         let state: StateAb =
-            get_attribute("STATE", scenario, &defaults, StateAb::from).ok_or("Missing STATE")?;
+            get_attribute("STATE", scenario, &defaults, StateAb::from).context("Missing STATE")?;
 
         // Really the only complicated parse is the GROUPS.
         let mut groups: Parties = BTreeMap::new();
@@ -188,7 +188,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
                 groups.insert(String::from(group_name), groupvec);
             }
         } else {
-            return Err("Missing GROUPS");
+            bail!("Missing GROUPS");
         }
 
         out.insert(
@@ -223,7 +223,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>, &'sta
 pub fn list_scenarios(cfgpath: &Path) {
     let headers = "Scenario\tPreferred Parties\tPlace\tYear";
     let mut output = Vec::new();
-    let doc = get_cfg_doc_from_path(cfgpath);
+    let doc = get_cfg_doc_from_path(cfgpath).unwrap();
     let scenarios = get_scenarios(&doc).unwrap();
     for (name, scenario) in scenarios {
         let state = scenario.state.to_string();
@@ -317,7 +317,7 @@ pub fn cli_scenarios(
     existing: Option<&Scenario>,
     candidates: &CandsData,
     known_options: &KnownConfigOptions,
-) -> Result<BTreeMap<String, Scenario>, std::io::Error> {
+) -> Result<BTreeMap<String, Scenario>> {
     let mut out = BTreeMap::new();
     let mut new_scen: String = input("Define a new Scenario? [Y]/n: ")?.to_uppercase();
     while new_scen.starts_with('Y') || new_scen.is_empty() {
@@ -514,11 +514,11 @@ pub fn cli_scenarios(
 pub fn write_scenarios(
     input: BTreeMap<String, Scenario>,
     outfile: &mut dyn Write,
-) -> Result<(), std::io::Error> {
+) -> Result<()> {
     // we want the top-level tables in the doc to use [key] formatting and for groups to use [key.groups] formatting
     // so the "pretty" formatting gives us that
     // (this is important, because non-pretty results in inline tables)
-    let outstring = ser::to_string_pretty(&input).expect("Error converting Scenario to TOML");
+    let outstring = ser::to_string_pretty(&input).context("Error converting Scenario to TOML")?;
     outfile.write_all(outstring.as_bytes())?;
     Ok(())
 }
