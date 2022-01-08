@@ -135,7 +135,8 @@ fn run(sm: &clap::ArgMatches) {
                 &scenario.prefs_path,
                 &scenario.polling_places,
                 &scenario.npp_booths,
-            );
+            )
+            .expect("Error while distributing");
         } else if sm.is_present("project") && can_project {
             multiplier::project(
                 &scenario.groups,
@@ -163,7 +164,8 @@ fn run(sm: &clap::ArgMatches) {
                 &scenario.prefs_path,
                 &scenario.polling_places,
                 &scenario.npp_booths,
-            );
+            )
+            .expect("Error while distributing");
             if can_project {
                 multiplier::project(
                     &scenario.groups,

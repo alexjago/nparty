@@ -1,10 +1,10 @@
-use factorial::Factorial;
-use itertools::Itertools;
 /// This file translates Booth_NPP.py
-
 /// We want to reduce each unique preference sequence to some ordering
 ///    of each of the parties. For example, for four parties there are 65 orderings:
 ///   (0!) + (4 * 1!) + (6 * 2!) + (4 * 3!) + (4!)
+use anyhow::{bail, Context, Result};
+use factorial::Factorial;
+use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::create_dir_all;
 use std::path::Path;
@@ -119,7 +119,7 @@ pub fn booth_npps(
     formal_prefs_path: &Path,
     polling_places_path: &Path,
     npp_booths_path: &Path,
-) {
+) -> Result<()> {
     // cut down for WIP-ing
     eprintln!("\tDistributing Preferences");
     let mut partykeys = Vec::with_capacity(parties.len());
@@ -167,8 +167,7 @@ pub fn booth_npps(
     let mut pp_rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .has_headers(false)
-        .from_path(polling_places_path)
-        .unwrap();
+        .from_path(polling_places_path)?;
     // 2019 problems: there's a pre-header line
     // we need to skip it, and we're going to do so manually.
 
@@ -187,8 +186,8 @@ pub fn booth_npps(
         //     break;
         // }
 
-        let record: BoothRecord = result.unwrap().deserialize(None).unwrap(); //
-                                                                              // do actual-useful things with record
+        let record: BoothRecord = result?.deserialize(None)?; //
+                                                              // do actual-useful things with record
         if record.State != *state {
             continue;
         }
@@ -214,7 +213,7 @@ pub fn booth_npps(
         .escape(Some(b'\\')) //.trim(csv::Trim::All)
         .from_reader(open_csvz_from_path(formal_prefs_path));
 
-    let prefs_headers = prefs_rdr.headers().unwrap().clone();
+    let prefs_headers = prefs_rdr.headers()?.clone();
     // eprintln!("Prefs headers: {:?}", prefs_headers.as_slice());
     // eprintln!("\nNo actual preferences processed yet, but we successfully opened the zipfile and the headers look like this:\n{:#?}", prefs_headers);
 
@@ -229,7 +228,11 @@ pub fn booth_npps(
         // So the _second_ "A:", if it exists, is the first BTL field.
         // If it doesn't exist (loop exhausts) then _all_ we have are UnGrouped candidates
         // and thus the first BTL field is simply the first prefs field at all.
-        if prefs_headers.get(i).unwrap().starts_with("A:") {
+        if prefs_headers
+            .get(i)
+            .context("No candidates")?
+            .starts_with("A:")
+        {
             btl_start = i - atl_start;
             break;
         }
@@ -241,8 +244,8 @@ pub fn booth_npps(
     // Create candidate number index
 
     let mut cand_nums: HashMap<&str, usize> = HashMap::new();
-    for i in atl_start..prefs_headers.len() {
-        cand_nums.insert(prefs_headers.get(i).unwrap(), 1 + i - atl_start);
+    for (i, pref) in prefs_headers.iter().skip(atl_start).enumerate() {
+        cand_nums.insert(pref, 1 + i);
     }
     let cand_nums = cand_nums; // make immutable now
 
@@ -262,7 +265,10 @@ pub fn booth_npps(
         let mut acands = Vec::new();
         let mut bcands = Vec::new();
         for cand in cand_list {
-            let cn = cand_nums.get::<str>(cand).unwrap().to_owned();
+            let cn = cand_nums
+                .get::<str>(cand)
+                .context("missing cand_num")?
+                .to_owned();
             pcand_nums.push(cn);
             if cn > btl_start {
                 bcands.push(cn)
@@ -270,9 +276,12 @@ pub fn booth_npps(
                 acands.push(cn)
             }
         }
-        groups.insert(*party_indices.get(party.as_str()).unwrap(), pcand_nums);
-        groups_atl.insert(*party_indices.get(party.as_str()).unwrap(), acands);
-        groups_btl.insert(*party_indices.get(party.as_str()).unwrap(), bcands);
+        let p_idx = *party_indices
+            .get(party.as_str())
+            .with_context(|| format!("The party/group {} is missing from party_indices", party))?;
+        groups.insert(p_idx, pcand_nums);
+        groups_atl.insert(p_idx, acands);
+        groups_btl.insert(p_idx, bcands);
     }
 
     eprintln!("\nFull Groups: {:#?}", groups);
@@ -301,10 +310,10 @@ pub fn booth_npps(
     // performance note: we tried amortizing the allocation and it was slower ?!?!?!?!?!
     // and then we tried again and it was faster.
     // let mut record = csv::StringRecord::new();
-    // while prefs_rdr.read_record(&mut record).unwrap() {
+    // while prefs_rdr.read_record(&mut record)? {
 
     for row in prefs_rdr_iter {
-        let record = row.unwrap();
+        let record = row?;
 
         let divnm = &record[1];
         let boothnm = &record[2];
@@ -381,7 +390,7 @@ pub fn booth_npps(
 
         bests.sort_unstable();
         let order: Vec<usize> = bests.iter().map(|x| x.1).collect();
-        let pref_idx = *combo_tree.get(&order).unwrap();
+        let pref_idx = *combo_tree.get(&order).context("no pref index?")?;
 
         // Using strings here is surely one of the slower parts of the operation
         // Actually this datastructure in general is one of the slower things.
@@ -425,10 +434,9 @@ pub fn booth_npps(
             if bk.1.contains(w) {
                 let divbooth: DivBooth = (bk.0.clone(), non_booth_convert(w).to_string());
                 #[allow(clippy::map_entry)]
-                if division_specials.contains_key(&divbooth) {
-                    #[allow(clippy::needless_range_loop)]
+                if let Some(db) = division_specials.get_mut(&divbooth) {
                     for j in 0..combinations.len() {
-                        division_specials.get_mut(&divbooth).unwrap()[j] += bv[j];
+                        db[j] += bv[j];
                     }
                 } else {
                     division_specials.insert(divbooth, bv.clone());
@@ -449,12 +457,15 @@ pub fn booth_npps(
 
     // and now we write
     // first create directory if needed
-    create_dir_all(npp_booths_path.parent().unwrap()).unwrap();
+    create_dir_all(
+        npp_booths_path
+            .parent()
+            .with_context(|| format!("{} has no parent", npp_booths_path.display()))?,
+    )?;
     let mut wtr = csv::WriterBuilder::new()
         .terminator(csv::Terminator::CRLF)
         .has_headers(false)
-        .from_path(npp_booths_path)
-        .unwrap();
+        .from_path(npp_booths_path)?;
 
     let npp_header = &mut NPP_FIELD_NAMES.to_vec();
     for i in combinations.iter() {
@@ -463,12 +474,13 @@ pub fn booth_npps(
     npp_header.push("Total");
 
     wtr.write_record(npp_header)
-        .expect("error writing booths header");
+        .context("error writing booths header")?;
 
     for (bk, bv) in booth_counts.iter().sorted() {
-        let br = booths
-            .get(bk)
-            .unwrap_or_else(|| panic!("It's really weird, but {:#?} isn't in `booths`.", bk));
+        let br = match booths.get(bk) {
+            Some(x) => x,
+            _ => bail!("It's really weird, but {:#?} isn't in `booths`.", bk),
+        };
         let mut bdeets = vec![
             br.PollingPlaceID.to_string(),
             br.DivisionNm.clone(),
@@ -483,9 +495,9 @@ pub fn booth_npps(
         }
         bdeets.push(total.to_string());
         let bdeets = bdeets;
-        wtr.write_record(&bdeets).expect("error writing booths");
+        wtr.write_record(&bdeets).context("error writing booths")?;
     }
-    wtr.flush().expect("error writing booths");
+    wtr.flush().context("error writing booths")?;
 
     for (bk, bv) in division_specials.iter() {
         let mut bdeets: Vec<String> = vec![
@@ -495,14 +507,6 @@ pub fn booth_npps(
             "".to_string(),
             "".to_string(),
         ];
-        // let mut bdeets = Vec::new();
-        // // bdeets.push("").push(bksplit[0]).push(bksplit[1]).push("").push("");
-        // // let bdeets = &["", bksplit[0], bksplit[1], "", ""].to_vec();
-        // bdeets.push("".to_string());
-        // bdeets.push(bk.0.clone());
-        // bdeets.push(bk.1.clone());
-        // bdeets.push("".to_string());
-        // bdeets.push("".to_string());
 
         let mut total = 0;
         for i in bv.iter() {
@@ -511,9 +515,10 @@ pub fn booth_npps(
         }
         bdeets.push(total.to_string());
         let bdeets = bdeets;
-        wtr.write_record(&bdeets).expect("error writing booths");
+        wtr.write_record(&bdeets).context("error writing booths")?;
     }
-    wtr.flush().expect("Failed to finalise writing booths");
+    wtr.flush().context("Failed to finalise writing booths")?;
 
     // eprintln!("\t\tDone!");
+    Ok(())
 }
