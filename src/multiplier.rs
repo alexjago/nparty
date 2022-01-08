@@ -16,8 +16,8 @@ use std::fs::create_dir_all;
 /// [sa1s; booths] * [booths; orders] = [sa1s; orders]
 /// except that [sa1s; booths] is so sparse as to be represented a little differently.
 use std::path::Path;
-use std::process;
 
+/// Convert a header to a column index
 fn sfl(input: &str) -> usize {
     match input {
         "year" => 0,
@@ -123,8 +123,8 @@ pub fn project(
             .context("Missing state_ab field in record")?
             != state.to_string()
         {
+            // All SA1s nationwide are in the one file - so any row with the wrong state can be safely skipped.
             continue;
-        // All SA1s nationwide are in the one file - so any row with the wrong state can be safely skipped.
         } else if row
             .get(sfl("year"))
             .context("Missing year field in record")?
@@ -137,11 +137,6 @@ pub fn project(
                 year
             );
         }
-
-        let mut output_row = outputn
-            .get(&id)
-            .cloned()
-            .unwrap_or_else(|| vec![0.0_f64; combinations.len() + 1]);
 
         let sa1_booth_votes: f64 = row
             .get(sfl("votes"))
@@ -156,8 +151,13 @@ pub fn project(
             continue;
         }
 
-        let boothvotes = &booths.get(&divbooth).unwrap().1;
-        let boothtotal = boothvotes.last().unwrap();
+        let boothvotes = &booths.get(&divbooth).with_context(|| format!("TOCTOU for {}", &divbooth))?.1;
+        let boothtotal = boothvotes.last().with_context(|| format!("No vote records for {}", &divbooth))?;
+
+        let mut output_row = outputn
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| vec![0.0_f64; combinations.len() + 1]);
 
         if *boothtotal != 0.0_f64 {
             for (i, w) in boothvotes.iter().enumerate() {
