@@ -151,8 +151,13 @@ pub fn project(
             continue;
         }
 
-        let boothvotes = &booths.get(&divbooth).with_context(|| format!("TOCTOU for {}", &divbooth))?.1;
-        let boothtotal = boothvotes.last().with_context(|| format!("No vote records for {}", &divbooth))?;
+        let boothvotes = &booths
+            .get(&divbooth)
+            .with_context(|| format!("TOCTOU for {}", &divbooth))?
+            .1;
+        let boothtotal = boothvotes
+            .last()
+            .with_context(|| format!("No vote records for {}", &divbooth))?;
 
         let mut output_row = outputn
             .get(&id)

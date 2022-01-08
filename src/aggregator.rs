@@ -7,6 +7,7 @@
 //! 4. splits (3) according to (2) where necessary
 //! 5. aggregates (4) by district
 
+use anyhow::{Context, Result};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{create_dir_all, File};
@@ -18,7 +19,7 @@ pub fn aggregate(
     npp_dists_path: &Path,
     write_js: bool,
     parties: &BTreeMap<String, Vec<String>>,
-) {
+) -> Result<()> {
     //! 1. Take SA1-by-SA1 NPP data from `sa1_prefs_path`
     //! 2. Take SA1 population & district split data from `sa1_districts_path`
     //! 3. Scale (1) to fit (2) [if 3rd & 4th columns exist in (2)]
@@ -35,13 +36,16 @@ pub fn aggregate(
         .flexible(true)
         .has_headers(true)
         .from_path(sa1_prefs_path)
-        .expect("Could not find SA1s preferences file!");
+        .context("Could not find SA1s preferences file!")?;
     for record in sp_rdr.records() {
-        let row = record.unwrap();
-        let id = row.get(0).unwrap();
+        let row = record?;
+        let id = row.get(0).context("empty row in SA1 prefs file")?;
         let mut numbers = Vec::with_capacity(row.len() - 1);
         for i in 1..row.len() {
-            let x: f64 = row.get(i).unwrap().parse::<f64>().unwrap_or(0.0_f64);
+            let x: f64 = row
+                .get(i)
+                .and_then(|x| x.parse::<f64>().ok())
+                .unwrap_or(0.0_f64);
             numbers.push(x);
         }
         sa1_prefs.insert(id.to_string(), numbers);
@@ -56,32 +60,42 @@ pub fn aggregate(
         .flexible(true)
         .has_headers(true)
         .from_path(sa1_districts_path)
-        .expect("Could not find SA1s to districts correspondence file");
+        .context("Could not find SA1s to districts correspondence file")?;
 
     for record in sd_rdr.records() {
-        let row = record.unwrap();
+        let row = record?;
 
         if row.len() < 2 {
             continue;
         }
 
-        let id = row.get(0).unwrap().trim();
-        let dist = row.get(1).unwrap().trim();
-
-        if !sa1_prefs.contains_key(id) {
-            continue;
-        }
+        let id = row
+            .get(0)
+            .context("empty row in SA1s-to-districts file")?
+            .trim();
+        let dist = row
+            .get(1)
+            .context("empty row in SA1s-to-districts file")?
+            .trim();
 
         // 3. Scale (1) to fit (2)
         // 4. is along for the ride?
 
-        let sa1_npps = sa1_prefs.get(id).unwrap();
+        let sa1_npps = match sa1_prefs.get(id) {
+            Some(x) => x,
+            _ => continue,
+        };
         let mut multiplier = 1.0_f64;
 
         if row.len() >= 3 {
             // Fun fact: we don't actually need `Pop_Share` for anything
-            let sa1_total = sa1_prefs.get(id).unwrap().last().unwrap();
-            let sa1_pop = row.get(2).unwrap().parse::<f64>().unwrap_or(0.0_f64);
+            let sa1_total = sa1_npps
+                .last()
+                .context("missing 'total' field in SA1s-to-districts file")?;
+            let sa1_pop = row
+                .get(2)
+                .and_then(|x| x.parse::<f64>().ok())
+                .unwrap_or(0.0_f64);
 
             if sa1_pop == 0.0_f64 {
                 multiplier = 0.0_f64
@@ -101,7 +115,7 @@ pub fn aggregate(
         // 5. Aggregates (4) by district.
 
         if districts.contains_key(dist) {
-            let dist_npps = districts.get_mut(dist).unwrap();
+            let dist_npps = districts.get_mut(dist).context("TOCTOU in aggregation")?;
             for j in 0..sa1_npps.len() {
                 dist_npps[j] += sa1_npps[j] * multiplier;
             }
@@ -117,14 +131,18 @@ pub fn aggregate(
 
     // 6. Output to `npp_dists_path`
 
-    create_dir_all(sa1_prefs_path.parent().unwrap()).unwrap();
+    create_dir_all(
+        sa1_prefs_path
+            .parent()
+            .with_context(|| format!("{} has no parent", sa1_prefs_path.display()))?,
+    )?;
 
     // 6.a CSV
 
-    let mut dist_wtr = csv::Writer::from_path(npp_dists_path).unwrap();
+    let mut dist_wtr = csv::Writer::from_path(npp_dists_path)?;
 
     let mut header = vec![String::from("District")];
-    let sp_headers = sp_rdr.headers().unwrap();
+    let sp_headers = sp_rdr.headers()?;
     for i in sp_headers.iter().skip(1) {
         header.push(i.to_string());
     }
@@ -132,7 +150,7 @@ pub fn aggregate(
 
     dist_wtr
         .write_record(&header)
-        .expect("error writing npp_dists header");
+        .context("error writing npp_dists header")?;
 
     for (id, row) in districts.iter() {
         let mut out: Vec<String> = Vec::with_capacity(header.len());
@@ -143,10 +161,10 @@ pub fn aggregate(
         eprintln!("{:?}", out);
         dist_wtr
             .write_record(out)
-            .expect("error writing npp_dists line");
+            .context("error writing npp_dists line")?;
     }
 
-    dist_wtr.flush().expect("error finalising npp_dists");
+    dist_wtr.flush().context("error finalising npp_dists")?;
 
     // 6.b JS
     if write_js {
@@ -160,7 +178,10 @@ pub fn aggregate(
             "data": districts
         });
         let json_path = npp_dists_path.with_extension("json");
-        let json_file = File::create(json_path).expect("Error creating SA1s aggregate JSON file");
-        serde_json::to_writer(json_file, &out).expect("Error writing SA1s aggregate JSON file");
+        let json_file =
+            File::create(json_path).context("Error creating SA1s aggregate JSON file")?;
+        serde_json::to_writer(json_file, &out).context("Error writing SA1s aggregate JSON file")?;
     }
+
+    Ok(())
 }

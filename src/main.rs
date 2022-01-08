@@ -145,7 +145,7 @@ fn run(sm: &clap::ArgMatches) {
                 scenario.sa1s_breakdown.as_ref().unwrap(),
                 scenario.sa1s_prefs.as_ref().unwrap(),
             )
-            .expect("error while projecting");
+            .expect("Error while projecting");
         } else if sm.is_present("combine") && can_combine {
             aggregator::aggregate(
                 scenario.sa1s_prefs.as_ref().unwrap(),
@@ -153,7 +153,8 @@ fn run(sm: &clap::ArgMatches) {
                 scenario.npp_dists.as_ref().unwrap(),
                 sm.is_present("js"),
                 &scenario.groups,
-            );
+            )
+            .expect("Error while combining");
         } else {
             // run all phases
             booths::booth_npps(
@@ -172,7 +173,7 @@ fn run(sm: &clap::ArgMatches) {
                     scenario.sa1s_breakdown.as_ref().unwrap(),
                     scenario.sa1s_prefs.as_ref().unwrap(),
                 )
-                .expect("error while projecting");
+                .expect("Error while projecting");
             }
             if can_combine {
                 aggregator::aggregate(
@@ -181,7 +182,8 @@ fn run(sm: &clap::ArgMatches) {
                     scenario.npp_dists.as_ref().unwrap(),
                     sm.is_present("js"),
                     &scenario.groups,
-                );
+                )
+                .expect("Error while combining");
             }
         }
     }
