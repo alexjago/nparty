@@ -24,7 +24,7 @@ counter = "0.4.3"
 zip = "0.5.5"
 zip-extensions = "0.4.0"
 factorial = "0.2.0"
-clap = {version = "~2.27.0", features = ["yaml"]}
+clap = {version = "3", features = ["color", "derive", "suggestions"]}
 toml_edit = {version = "0.12.3", features = ["serde"]}
 tabwriter = "1.2.1"
 ron = "0.5.1"

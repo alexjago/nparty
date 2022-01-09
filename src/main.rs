@@ -5,12 +5,12 @@
 extern crate serde_derive;
 
 use anyhow::{bail, Context, Result};
-use clap::{load_yaml, App};
+use clap::{App, AppSettings, Parser, Subcommand};
 use config::{KnownConfigOptions, Scenario};
 use utils::ToStateAb;
 
 use std::collections::BTreeMap;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::{metadata, File};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -24,8 +24,176 @@ mod term;
 mod upgrades;
 mod utils;
 
+#[derive(Parser, Debug)]
+#[clap(version, about)]
+#[clap(global_setting(AppSettings::PropagateVersion))]
+#[clap(global_setting(AppSettings::UseLongFormatForHelpSubcommand))]
+#[clap(global_setting(AppSettings::ArgRequiredElseHelp))]
+struct Cli {
+    #[clap(subcommand)]
+    command: CliCommands,
+}
+
+#[derive(Subcommand, Debug)]
+enum CliCommands {
+    Configure(CliConfigure),
+    #[clap(subcommand)]
+    Data(CliData),
+    List(CliList),
+    Run(CliRun),
+    #[clap(subcommand)]
+    Upgrade(CliUpgrade)
+}
+
+/// Either download all necessary AEC data directly, or examine the URLs to the relevant files.
+#[derive(Subcommand, Debug)]
+#[allow(non_snake_case)]
+#[clap(after_help="Please note that you'll also need to convert XLSX to CSV manually. At least for now...")]
+enum CliData {
+    /// download everything to specified folder
+    Download {
+        #[clap(parse(from_os_str))]
+        DL_FOLDER: PathBuf
+    },
+    /// write list of downloads to FILE as HTML, or pass `-` to output plain text to stdout instead
+    Examine {
+        #[clap(parse(from_os_str))]
+        FILE: PathBuf
+    },
+}
+
+/// Upgrade electoral and geographic data files published in older formats to use the latest format.
+#[derive(Subcommand, Debug)]
+enum CliUpgrade {
+    /// upgrade a preference file to the latest format
+    Prefs {
+        /// suffix for when filenames would collide
+        #[clap(long, default_value_t = String::from("_to19"))]
+        suffix: String,
+
+        /// shell-style expression to filter input filenames from directory
+        #[clap(long, default_value_t = String::from("aec-senate-formalpreferences*"))]
+        filter: String,
+
+        /// candidate CSV file
+        #[clap(long, value_name="CANDIDATES_FILE", parse(from_os_str))]
+        candidates: PathBuf,
+
+        /// input file or directory
+        #[clap(parse(from_os_str))]
+        input: PathBuf,
+
+        /// output file or directory
+        #[clap(parse(from_os_str))]
+        output: PathBuf,
+    },
+
+    /// convert an SA1s-Districts file from old SA1s to new
+    Sa1s {
+        /// Indicate lack of header row for input file
+        #[clap(long)]
+        no_infile_headers: bool,
+
+        /// Columns should be: 'SA1_7DIGITCODE_old', 'SA1_7DIGITCODE_new', 'RATIO'
+        #[clap(parse(from_os_str))]
+        correspondence_file: PathBuf,
+
+        /// input file; columns should be 'SA1_Id', 'Dist_Name', 'Pop', 'Pop_Share'
+        #[clap(parse(from_os_str))]
+        input: PathBuf,
+
+        /// output file; columns will be 'SA1_Id', 'Dist_Name', 'Pop', 'Pop_Share'
+        #[clap(parse(from_os_str))]
+        output: PathBuf,
+        
+    }
+}
+
+/// Upgrade electoral and geographic data files published in older formats to use the latest format.
+#[derive(Parser, Debug)]
+#[clap(after_help = "Note: Options marked * will be asked for interactively if not specified. (Other options are helpful, but not required.)")]
+struct CliConfigure {
+    /// * Year of the election
+    #[clap(long)]
+    year: Option<String>,
+
+    /// * State or Territory
+    #[clap(long)]
+    state: Option<String>,
+    
+    /// * Polling Places file
+    #[clap(long, parse(from_os_str))]
+    polling_places: Option<PathBuf>,
+    
+    /// * Polling Places to SA1s breakdown file
+    #[clap(long, parse(from_os_str))]
+    sa1s_breakdown: Option<PathBuf>,
+    
+    /// * Output Directory
+    #[clap(long, parse(from_os_str))]
+    output_dir: Option<PathBuf>,
+
+    /// An existing configuration file to take defaults from
+    #[clap(long, parse(from_os_str), value_name = "OLD_CONFIG")]
+    from: Option<PathBuf>,
+
+    /// The AEC's 'Political Parties' CSV
+    #[clap(long, parse(from_os_str))]
+    party_details: Option<PathBuf>,
+
+    /// AEC candidate CSV file
+    #[clap(parse(from_os_str), value_name = "CANDS_FILE")]
+    candidates: PathBuf,
+
+    /// AEC candidate CSV file
+    #[clap(parse(from_os_str), value_name = "NEW_CONFIG")]
+    configfile: PathBuf,
+}
+
+/// List scenarios from the configuration file.
+#[derive(Parser, Debug)]
+#[clap(after_help = "Scenario tables are printed to standard output. If that's a terminal, they'll be pretty-printed with elastic tabstops. If that's a pipe or file, they'll be tab-separated to make further processing as straightforward as possible.")]
+struct CliList {
+    /// The configuration file to list scenarios from
+    #[clap(parse(from_os_str))]
+    configfile: PathBuf,
+}
+
+/// Run scenarios from the configuration file.
+#[derive(Parser, Debug)]
+#[clap(after_help = "Note: You probably don't need to worry about [-c | -d | -p].")]
+struct CliRun {
+    /// Also output JavaScript from the combination stage, for the website predictor. Ignored if [-d | -p].
+    #[clap(long, conflicts_with_all(&["distribute", "project"]))]
+    js: bool,
+
+    /// Perform ONLY the party-preferred distribution phase
+    #[clap(long, short, conflicts_with_all(&["js", "combine", "project"]))]
+    distribute: bool,
+
+    /// Perform ONLY the polling-places to SA1s projection phase
+    #[clap(long, short, conflicts_with_all(&["js", "distribute", "project"]))]
+    combine: bool,
+
+    /// Perform ONLY the SA1s to districts combination phase
+    #[clap(long, short, conflicts_with_all(&["js", "combine", "distribute"]))]
+    project: bool,
+    
+    /// Run a SPECIFIC scenario from the configuration file (can be given multiple times to run several scenarios)
+    #[clap(long, short)]
+    scenario: Option<Vec<String>>,
+
+    /// The configuration file to run
+    #[clap(parse(from_os_str))]
+    configfile: PathBuf,
+}
+
 fn main() -> anyhow::Result<()> {
-    let yml = load_yaml!("cli.yaml");
+    let m = Cli::parse();
+
+    eprintln!("{:#?}", m);
+
+    let yml = todo!();
     let m = App::from(yml).get_matches();
 
     // eprintln!("{:#?}", &m);
