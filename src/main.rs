@@ -1,22 +1,8 @@
 /// nparty: N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis.  
 /// Copyright (C) 2017-2022  Alex Jago <abjago@abjago.net>.
 /// Released under the MIT or Apache-2.0 licenses, at your option.
-extern crate csv;
 #[macro_use]
 extern crate serde_derive;
-extern crate ansi_term;
-extern crate atty;
-extern crate clap;
-extern crate factorial;
-extern crate glob;
-extern crate itertools;
-extern crate ron;
-extern crate tabwriter;
-extern crate toml_edit;
-extern crate unicode_segmentation;
-extern crate url;
-extern crate zip;
-extern crate zip_extensions;
 
 use anyhow::{bail, Context, Result};
 use clap::{load_yaml, App};
