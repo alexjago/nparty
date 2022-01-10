@@ -159,21 +159,21 @@ pub struct CliList {
 #[derive(Parser, Debug)]
 #[clap(after_help = "Note: You probably don't need to worry about [-c | -d | -p].")]
 pub struct CliRun {
-    /// Also output JavaScript from the combination stage, for the website predictor. Ignored if [-d | -p].
-    #[clap(long, conflicts_with_all(&["distribute", "project"]))]
-    pub js: bool,
-
     /// Perform ONLY the party-preferred distribution phase
     #[clap(long, short, conflicts_with_all(&["js", "combine", "project"]))]
     pub distribute: bool,
-
+    
     /// Perform ONLY the polling-places to SA1s projection phase
+    #[clap(long, short, conflicts_with_all(&["js", "combine", "distribute"]))]
+    pub project: bool,
+
+    /// Perform ONLY the SA1s to districts combination phase
     #[clap(long, short, conflicts_with_all(&["js", "distribute", "project"]))]
     pub combine: bool,
 
-    /// Perform ONLY the SA1s to districts combination phase
-    #[clap(long, short, conflicts_with_all(&["js", "combine", "distribute"]))]
-    pub project: bool,
+    /// Also output JavaScript from the combination stage, for the website predictor. Ignored if [-d | -p].
+    #[clap(long, conflicts_with_all(&["distribute", "project"]))]
+    pub js: bool,
 
     /// Run a SPECIFIC scenario from the configuration file (can be given multiple times to run several scenarios)
     #[clap(long, short)]
@@ -308,7 +308,7 @@ pub fn do_upgrade_prefs(args: CliUpgradePrefs) -> anyhow::Result<()> {
             File::open(&candspath).context("Couldn't open candidates file")?,
         );
 
-        eprintln!("ipath: {} \t opath: {}", ipath.display(), opath.display());
+        // eprintln!("ipath: {} \t opath: {}", ipath.display(), opath.display());
 
         let era = upgrades::era_sniff(&mut utils::open_csvz_from_path(ipath)?)
             .context("Error determining era of input.")?;
@@ -378,7 +378,7 @@ pub fn do_configure(args: CliConfigure) -> anyhow::Result<()> {
 
     let out = config::cli_scenarios(existing, &candidates, &kco)
         .context("Configuration could not be created.")?;
-    eprintln!("{:#?}", out);
+    // eprintln!("{:#?}", out);
 
     let mut outfile = File::create(outpath)?;
     config::write_scenarios(out, &mut outfile)?;
