@@ -1,6 +1,6 @@
 [package]
 name = "nparty"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Alex Jago <4475543+alexjago@users.noreply.github.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -30,7 +30,7 @@ toml_edit = {version = "0.12.3", features = ["serde"]}
 tabwriter = "1.2.1"
 ron = "0.5.1"
 url = "2.1.1"
-reqwest = {version = "0.10.4", features = ["blocking", "gzip", "brotli"]}
+reqwest = {version = "0.11", features = ["blocking", "gzip", "brotli", "rustls-tls"]}
 glob = "0.3.0"
 enum-utils = "0.1.2"
 Inflector = "0.11.4"
