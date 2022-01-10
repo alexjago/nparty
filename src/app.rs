@@ -203,7 +203,7 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
             )
         })?;
         eprintln!("Running Scenario {}", scen_name);
-        eprintln!("{:#?}", scenario);
+        // eprintln!("{:#?}", scenario);
 
         let sa1b = scenario.sa1s_breakdown.as_ref();
         let sa1p = scenario.sa1s_prefs.as_ref();
