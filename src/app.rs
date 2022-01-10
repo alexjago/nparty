@@ -16,11 +16,15 @@ use crate::utils::ToStateAb;
 #[clap(global_setting(AppSettings::PropagateVersion))]
 #[clap(global_setting(AppSettings::UseLongFormatForHelpSubcommand))]
 pub struct Cli {
+    /// Launch a graphical version of the program
+    /// (overrides and ignores any other option/command)
+    #[clap(long, short = 'G')]
+    pub gui: bool,
     #[clap(subcommand)]
     pub command: CliCommands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, PartialEq)]
 pub enum CliCommands {
     Configure(CliConfigure),
     #[clap(subcommand)]
@@ -32,7 +36,7 @@ pub enum CliCommands {
 }
 
 /// Either download all necessary AEC data directly, or examine the URLs to the relevant files.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, PartialEq)]
 #[allow(non_snake_case)]
 #[clap(
     after_help = "Please note that you'll also need to convert XLSX to CSV manually. At least for now..."
@@ -51,7 +55,7 @@ pub enum CliData {
 }
 
 /// Upgrade electoral and geographic data files published in older formats to use the latest format.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, PartialEq)]
 pub enum CliUpgrade {
     /// upgrade a preference file to the latest format
     Prefs(CliUpgradePrefs),
@@ -59,7 +63,7 @@ pub enum CliUpgrade {
     Sa1s(CliUpgradeSa1s),
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, PartialEq)]
 pub struct CliUpgradePrefs {
     /// suffix for when filenames would collide
     #[clap(long, default_value_t = String::from("_to19"))]
@@ -82,7 +86,7 @@ pub struct CliUpgradePrefs {
     pub output: PathBuf,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, PartialEq)]
 pub struct CliUpgradeSa1s {
     /// Indicate lack of header row for input file
     #[clap(long)]
@@ -102,7 +106,7 @@ pub struct CliUpgradeSa1s {
 }
 
 /// Generate a configuration file interactively, possibly using an existing file as a basis.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, PartialEq)]
 #[clap(
     after_help = "Note: Options marked * will be asked for interactively if not specified. (Other options are helpful, but not required.)"
 )]
@@ -145,7 +149,7 @@ pub struct CliConfigure {
 }
 
 /// List scenarios from the configuration file.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, PartialEq)]
 #[clap(
     after_help = "Scenario tables are printed to standard output. If that's a terminal, they'll be pretty-printed with elastic tabstops. If that's a pipe or file, they'll be tab-separated to make further processing as straightforward as possible."
 )]
@@ -156,7 +160,7 @@ pub struct CliList {
 }
 
 /// Run scenarios from the configuration file.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, PartialEq)]
 #[clap(after_help = "Note: You probably don't need to worry about [-c | -d | -p].")]
 pub struct CliRun {
     /// Perform ONLY the party-preferred distribution phase

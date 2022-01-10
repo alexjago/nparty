@@ -5,8 +5,9 @@
 extern crate serde_derive;
 
 use anyhow::bail;
-use clap::Parser;
+use clap::{Parser, IntoApp, AppSettings, Arg};
 use config::KnownConfigOptions;
+use klask::{Settings, run_app};
 
 mod aggregator;
 mod booths;
@@ -21,10 +22,23 @@ mod app;
 use app::*;
 use app::CliCommands::*;
 
-
 fn main() -> anyhow::Result<()> {
-    let m = Cli::parse();
-    // eprintln!("{:#?}", m);
+    let m = Cli::into_app().setting(AppSettings::IgnoreErrors).get_matches();
+    if m.is_present("gui") {
+        // Polyglot app! See https://github.com/MichalGniadek/klask/issues/22
+        let n = Cli::into_app().mut_arg("gui", |_| Arg::new("help"));
+        run_app(
+            n,
+            Settings::default(),
+            |_| {}
+        );
+        Ok(())
+    } else {
+        actual(Cli::parse())
+    }
+}
+
+fn actual(m: Cli) -> anyhow::Result<()> {
     match m.command {
         Configure(sm) => do_configure(sm)?,
         Data(sm) => match sm {
@@ -33,13 +47,14 @@ fn main() -> anyhow::Result<()> {
                 data::examine_txt,
                 |x| data::examine_html(&x),
             ),
-        }
+        },
         List(sm) => config::list_scenarios(&sm.configfile)?,
         Run(sm) => run(sm)?,
         Upgrade(sm) => match sm {
             CliUpgrade::Prefs(ssm) => do_upgrade_prefs(ssm)?,
             CliUpgrade::Sa1s(_) => bail!("The SA1s upgrade functionality is not implemented yet. Sorry!"),
         },
+        // _ => unimplemented!()
     }
     Ok(())
 }

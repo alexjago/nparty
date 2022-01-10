@@ -43,7 +43,3 @@ debug = true
 [[bin]]
 name = "nparty"
 path = "src/main.rs"
-
-[[bin]]
-name = "nparty-gui"
-path = "src/gui.rs"
