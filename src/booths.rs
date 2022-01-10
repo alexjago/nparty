@@ -249,12 +249,12 @@ pub fn booth_npps(
     }
     let cand_nums = cand_nums; // make immutable now
 
-    eprintln!(
-        "\nCandidate numbers: \n{:?}",
-        cand_nums
-            .iter()
-            .sorted_by(|(_, av), (_, bv)| Ord::cmp(av, bv))
-    );
+    // eprintln!(
+    //     "\nCandidate numbers: \n{:?}",
+    //     cand_nums
+    //         .iter()
+    //         .sorted_by(|(_, av), (_, bv)| Ord::cmp(av, bv))
+    // );
 
     // finally, some lookups for the groups of interest...
 
@@ -289,9 +289,9 @@ pub fn booth_npps(
         groups_btl.insert(p_idx, bcands);
     }
 
-    eprintln!("\nFull Groups: {:?}", groups);
-    eprintln!("ATL Groups: {:?}", groups_atl);
-    eprintln!("BTL Groups: {:?}", groups_btl);
+    // eprintln!("\nFull Groups: {:?}", groups);
+    // eprintln!("ATL Groups: {:?}", groups_atl);
+    // eprintln!("BTL Groups: {:?}", groups_btl);
 
     eprintln!();
 
@@ -417,8 +417,8 @@ pub fn booth_npps(
                 ttyjump(),
                 progress
             );
-            eprintln!("{:#?}", &record);
-            eprintln!("{:?}\t{}", &bests, &combinations[pref_idx]);
+            // eprintln!("{:#?}", &record);
+            // eprintln!("{:?}\t{}", &bests, &combinations[pref_idx]);
         }
     }
 
@@ -524,6 +524,6 @@ pub fn booth_npps(
     }
     wtr.flush().context("Failed to finalise writing booths")?;
 
-    // eprintln!("\t\tDone!");
+    eprintln!("\t\tDone!");
     Ok(())
 }
