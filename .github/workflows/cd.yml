@@ -33,7 +33,6 @@ jobs:
             architecture: x86_64
             binary-postfix: ".exe"
             use-cross: false
-
     steps:
       - name: Installing Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -43,6 +42,13 @@ jobs:
           override: true
       - name: Checkout repository
         uses: actions/checkout@v2
+      - name: Ubuntu extra installs
+        shell: bash
+        run: |
+          if [[ ${{ matrix.job.os }} == ubuntu-latest ]]; then
+            sudo apt update
+            sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev
+          fi
       - name: Cargo build
         uses: actions-rs/cargo@v1
         with:
@@ -50,7 +56,6 @@ jobs:
           use-cross: ${{ matrix.job.use-cross }}
           toolchain: ${{ matrix.rust }}
           args: --release --target ${{ matrix.job.target }}
-
       - name: install strip command
         shell: bash
         run: |
