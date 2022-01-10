@@ -10,6 +10,10 @@ Crucially, the Australian Electoral Commission publishes the preference sequence
 
 This project, however, takes its name from an earlier step in the analysis: a party-preferred distribution. This is based on the observation that in lower house elections (Federal, State or Local), only three or four parties might contest a district. The theory is that a party-preferred distribution of Senate ballots will more closely reflect lower house results than simple Senate primaries will. Additionally, the full Senate ballot data permits full analysis of subsequent preference flows too, with the caveat that Senate voting is partial-preferential.
 
+## January 2022 update
+
+Hello World! The Rust rewrite is finally public! It even has a preliminary GUI!
+
 ## May 2020 update
 
 NParty undergoes its biggest change yet, with a rewrite in Rust! GUI aspirations meanwhile have shifted to a web app version, leveraging Rust's strong WASM integration. 
@@ -37,9 +41,9 @@ TODO: binaries, web.
 
 ### Data acquisition
 
-`nparty data -e HTML_FILE` will write an HTML file to the specified location. The page contains the latest known links to all the requisite AEC data files.
+`nparty data examine HTML_FILE` will write an HTML file to the specified location. The page contains the latest known links to all the requisite AEC data files.
 
-You can also automatically download (and, where possible, format-upgrade) all of those files, for 2016 and 2019, to a specified folder location. Do this with `nparty data -d DL_FOLDER`.
+You can also automatically download (and, where possible, format-upgrade) all of those files, for 2016 and 2019, to a specified folder location. Do this with `nparty data download DL_FOLDER`.
 
 **Please note that the download is a couple of hundred megabytes.** `nparty` is clever enough to read from compressed ZIP files, so there is no need to unzip - save your disk space. However, any `.xlsx` files will need to be converted to `.csv`
 
@@ -47,7 +51,7 @@ To do anything more than party-preferred distribution at the federal booth level
 
 ### Configuration
 
-Please refer to `2019.cfg` for an example configuration file. You can hand-edit it if you choose.
+Please refer to `2019.toml` for an example configuration file. You can hand-edit it if you choose.
 
 Configuration files are based around the concept of a "scenario", which combines:
 
@@ -57,7 +61,7 @@ Configuration files are based around the concept of a "scenario", which combines
 - optionally, a mapping to *project* polling-place-level results down to the SA1 level
 - optionally, another mapping to *combine* SA1-level results up to a district level
 
-`nparty generate` will assist you in generating a configuration file. It has two required arguments: the AEC's "candidates" file, and where to save the new configuration file.
+`nparty configure` will assist you in generating a configuration file. It has two required arguments: the AEC's "candidates" file, and where to save the new configuration file.
 
 There are also many optional arguments, corresponding generally to the other AEC files for a given election. It is recommended that you specify as many of these as you can, as otherwise you will need to type them later when prompted, or else hand-edit them into the configuration file.
 
