@@ -229,7 +229,8 @@ where
     let mut rdr = csv::Reader::from_reader(candsfile);
 
     for row in rdr.deserialize() {
-        let cand_record: CandidateRecord = row.context("Could not understand a row in the candidates file")?;
+        let cand_record: CandidateRecord =
+            row.context("Could not understand a row in the candidates file")?;
 
         if cand_record.nom_ty != NominationType::S {
             continue;
@@ -558,20 +559,22 @@ where
 
 /// Get a Writer to a file in a ZIP or die trying!
 /// Will create a ZIP file with a single inner file, named the same as the ZIP bar the extension.
-pub fn get_zip_writer_to_path(outpath: &path::Path, inner_ext: &str) -> Result<zip::ZipWriter<File>> {
+pub fn get_zip_writer_to_path(
+    outpath: &path::Path,
+    inner_ext: &str,
+) -> Result<zip::ZipWriter<File>> {
     let mut outfile = zip::ZipWriter::new(
         File::create(&outpath.with_extension("zip")).expect("Couldn't create new output file"),
     );
-    outfile
-        .start_file(
-            outpath
-                .with_extension(inner_ext)
-                .file_name()
-                .context("no file name in path")?
-                .to_str()
-                .context("could not convert path to string")?,
-            zip::write::FileOptions::default(),
-        )?;
+    outfile.start_file(
+        outpath
+            .with_extension(inner_ext)
+            .file_name()
+            .context("no file name in path")?
+            .to_str()
+            .context("could not convert path to string")?,
+        zip::write::FileOptions::default(),
+    )?;
     Ok(outfile)
 }
 
