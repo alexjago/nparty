@@ -1,0 +1,14 @@
+nparty is copyright Alex Jago <abjago.net> and released under either the MIT OR Apache-2.0 licenses, at your option:
+
+* MIT License: https://opensource.org/licenses/MIT
+* Apache 2.0 License: https://www.apache.org/licenses/LICENSE-2.0.txt
+
+The source code for nparty is available at https://github.com/alexjago/nparty
+
+Electoral, boundary and population data available for download with this tool is copyright the Commonwealth of Australia and used under the Creative Commons Attribution 4.0 License:
+
+* Creative Commons License: https://creativecommons.org/licenses/by/4.0
+
+The font "Source Code Pro" is copyright Adobe and embedded under the SIL Open Font License 1.1: 
+
+* Open Font License: http://scripts.sil.org/OFL

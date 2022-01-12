@@ -8,6 +8,7 @@
 //! 5. aggregates (4) by district
 
 use anyhow::{Context, Result};
+use indexmap::IndexMap;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{create_dir_all, File};
@@ -18,7 +19,7 @@ pub fn aggregate(
     sa1_districts_path: &Path,
     npp_dists_path: &Path,
     write_js: bool,
-    parties: &BTreeMap<String, Vec<String>>,
+    parties: &IndexMap<String, Vec<String>>,
 ) -> Result<()> {
     //! 1. Take SA1-by-SA1 NPP data from `sa1_prefs_path`
     //! 2. Take SA1 population & district split data from `sa1_districts_path`

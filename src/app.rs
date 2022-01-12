@@ -1,15 +1,14 @@
 use std::collections::BTreeMap;
-use std::fs::{File, metadata};
+use std::fs::{metadata, File};
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use anyhow::{bail, Context, Result};
-use clap::{AppSettings, Parser, Subcommand};
-use crate::*;
 use crate::config::*;
 use crate::utils::ToStateAb;
-
-// TODO: re-add #[clap(value_hint = ValueHint::FilePath)] annotations once Klask updates the file picker
+use crate::*;
+use anyhow::{bail, Context, Result};
+use clap::{AppSettings, Parser, Subcommand, ValueHint};
 
 #[derive(Parser, Debug)]
 #[clap(version, about)]
@@ -29,7 +28,11 @@ pub enum CliCommands {
     Configure(CliConfigure),
     #[clap(subcommand)]
     Data(CliData),
+    Example(CliExample),
+    /// View license information and acknowledgements
+    License,
     List(CliList),
+    Readme(CliReadme),
     Run(CliRun),
     #[clap(subcommand)]
     Upgrade(CliUpgrade),
@@ -44,22 +47,32 @@ pub enum CliCommands {
 pub enum CliData {
     /// download everything to specified folder
     Download {
-        #[clap(parse(from_os_str), )]
+        #[clap(value_hint = ValueHint::DirPath)]
+        #[clap(parse(from_os_str))]
         DL_FOLDER: PathBuf,
     },
     /// write list of downloads to FILE as HTML, or as plain text stdout if no file is specified
     Examine {
-        #[clap(parse(from_os_str), )]
+        #[clap(value_hint = ValueHint::FilePath)]
+        #[clap(parse(from_os_str))]
         FILE: Option<PathBuf>,
     },
 }
 
-/// Upgrade electoral and geographic data files published in older formats to use the latest format.
+/// Print an example configuration for the specified year, if available
+#[derive(Parser, Debug, PartialEq)]
+#[allow(non_snake_case)]
+pub struct CliExample {
+    /// the year of the config
+    year: String,
+}
+
+/// Upgrade older electoral and geographic data files to be compatible with more recent ones.
 #[derive(Parser, Debug, PartialEq)]
 pub enum CliUpgrade {
-    /// upgrade a preference file to the latest format
+    /// upgrade a preference file to the latest format (e.g. 2016 to 2019)
     Prefs(CliUpgradePrefs),
-    /// convert an SA1s-Districts file from old SA1s to new
+    /// convert an SA1s-Districts file from old SA1s to new (e.g. 2011 to 2016 ASGS)
     Sa1s(CliUpgradeSa1s),
 }
 
@@ -74,15 +87,15 @@ pub struct CliUpgradePrefs {
     pub filter: String,
 
     /// candidate CSV file
-    #[clap(long, value_name = "CANDIDATES_FILE", parse(from_os_str), )]
+    #[clap(long, value_name = "CANDIDATES_FILE", parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub candidates: PathBuf,
 
     /// input file or directory
-    #[clap(parse(from_os_str), )]
+    #[clap(parse(from_os_str), value_hint = ValueHint::AnyPath)]
     pub input: PathBuf,
 
     /// output file or directory
-    #[clap(parse(from_os_str), )]
+    #[clap(parse(from_os_str), value_hint = ValueHint::AnyPath)]
     pub output: PathBuf,
 }
 
@@ -93,15 +106,15 @@ pub struct CliUpgradeSa1s {
     pub no_infile_headers: bool,
 
     /// Columns should be: 'SA1_7DIGITCODE_old', 'SA1_7DIGITCODE_new', 'RATIO'
-    #[clap(parse(from_os_str), )]
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub correspondence_file: PathBuf,
 
     /// input file; columns should be 'SA1_Id', 'Dist_Name', 'Pop', 'Pop_Share'
-    #[clap(parse(from_os_str), )]
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub input: PathBuf,
 
     /// output file; columns will be 'SA1_Id', 'Dist_Name', 'Pop', 'Pop_Share'
-    #[clap(parse(from_os_str), )]
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub output: PathBuf,
 }
 
@@ -120,31 +133,31 @@ pub struct CliConfigure {
     pub state: Option<String>,
 
     /// * Polling Places file
-    #[clap(long, parse(from_os_str), )]
+    #[clap(long, parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub polling_places: Option<PathBuf>,
 
     /// * Polling Places to SA1s breakdown file
-    #[clap(long, parse(from_os_str), )]
+    #[clap(long, parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub sa1s_breakdown: Option<PathBuf>,
 
     /// * Output Directory
-    #[clap(long, parse(from_os_str), )]
+    #[clap(long, parse(from_os_str), value_hint = ValueHint::DirPath)]
     pub output_dir: Option<PathBuf>,
 
     /// An existing configuration file to take defaults from
-    #[clap(long, parse(from_os_str), value_name = "OLD_CONFIG", )]
+    #[clap(long, parse(from_os_str), value_name = "OLD_CONFIG", value_hint = ValueHint::FilePath)]
     pub from: Option<PathBuf>,
 
     /// The AEC's 'Political Parties' CSV
-    #[clap(long, parse(from_os_str), )]
+    #[clap(long, parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub party_details: Option<PathBuf>,
 
     /// AEC candidate CSV file
-    #[clap(parse(from_os_str), value_name = "CANDS_FILE", )]
+    #[clap(parse(from_os_str), value_name = "CANDS_FILE", value_hint = ValueHint::FilePath)]
     pub candidates: PathBuf,
 
     /// The configuration file to generate.
-    #[clap(parse(from_os_str), value_name = "NEW_CONFIG", )]
+    #[clap(parse(from_os_str), value_name = "NEW_CONFIG", value_hint = ValueHint::FilePath)]
     pub configfile: PathBuf,
 }
 
@@ -155,8 +168,15 @@ pub struct CliConfigure {
 )]
 pub struct CliList {
     /// The configuration file to list scenarios from
-    #[clap(parse(from_os_str))]
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub configfile: PathBuf,
+}
+
+/// Print README.md to file or standard output
+#[derive(Parser, Debug, PartialEq)]
+pub struct CliReadme {
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
+    pub file: Option<PathBuf>,
 }
 
 /// Run scenarios from the configuration file.
@@ -166,7 +186,7 @@ pub struct CliRun {
     /// Perform ONLY the party-preferred distribution phase
     #[clap(long, short, conflicts_with_all(&["js", "combine", "project"]))]
     pub distribute: bool,
-    
+
     /// Perform ONLY the polling-places to SA1s projection phase
     #[clap(long, short, conflicts_with_all(&["js", "combine", "distribute"]))]
     pub project: bool,
@@ -184,7 +204,7 @@ pub struct CliRun {
     pub scenario: Option<Vec<String>>,
 
     /// The configuration file to run
-    #[clap(parse(from_os_str), )]
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub configfile: PathBuf,
 }
 
@@ -386,5 +406,38 @@ pub fn do_configure(args: CliConfigure) -> anyhow::Result<()> {
 
     let mut outfile = File::create(outpath)?;
     config::write_scenarios(out, &mut outfile)?;
+    Ok(())
+}
+
+pub fn print_example_config(args: CliExample) -> anyhow::Result<()> {
+    match args.year.as_ref() {
+        "2016" => println!("{}", include_str!("../example_config_2016.toml")),
+        "2019" => println!("{}", include_str!("../example_config.toml")),
+        _ => bail!(
+            "No example available for the year {}. Sorry about that!",
+            args.year
+        ),
+    };
+    Ok(())
+}
+
+pub fn print_readme(args: CliReadme) -> anyhow::Result<()> {
+    let readme = include_str!("../README.md");
+    if let Some(p) = args.file {
+        let mut f = File::open(&p)?;
+        f.write_all(readme.as_bytes())
+            .context("Could not write README")
+    } else {
+        println!("{}", readme);
+        Ok(())
+    }
+}
+
+/// Before releasing, run
+///     cargo-license --avoid-build-deps --avoid-dev-deps -a -t > src/dependencies.txt
+pub fn print_license() -> anyhow::Result<()> {
+    println!(include_str!("license-preface.txt"));
+    println!("\nDependencies of nparty are listed as follows:\n");
+    println!(include_str!("dependencies.txt"));
     Ok(())
 }

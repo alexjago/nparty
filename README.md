@@ -10,32 +10,12 @@ Crucially, the Australian Electoral Commission publishes the preference sequence
 
 This project, however, takes its name from an earlier step in the analysis: a party-preferred distribution. This is based on the observation that in lower house elections (Federal, State or Local), only three or four parties might contest a district. The theory is that a party-preferred distribution of Senate ballots will more closely reflect lower house results than simple Senate primaries will. Additionally, the full Senate ballot data permits full analysis of subsequent preference flows too, with the caveat that Senate voting is partial-preferential.
 
-## January 2022 update
-
-Hello World! The Rust rewrite is finally public! It even has a preliminary GUI!
-
-## May 2020 update
-
-NParty undergoes its biggest change yet, with a rewrite in Rust! GUI aspirations meanwhile have shifted to a web app version, leveraging Rust's strong WASM integration. 
-
-### New NEW configuration
-
-The previous configuration was highly dependent on Python's ConfigParser. In moving to Rust some of that functionality (specifically, interpolation) is presently foregone. 
-
-### Dealing with the 2016/2019 format change
-
-Instead of maintaining parallel analysis tools for two different data formats, there is now a tool
-
-### Predictor site
-
-Still a work in progress. 
-
 
 # Let's Go!
 
-To install from source, you'll need to first have [a recent stable Rust installed](https://www.rust-lang.org/learn/get-started) and then you can `cargo install --git https://github.com/alexjago/nparty`. 
+Command-line binaries for 64-bit Intel/AMD are available for Mac, Linux and Windows here: https://github.com/alexjago/nparty/releases
 
-TODO: binaries, web.
+To install from source, you'll need to first have [a recent stable Rust installed](https://www.rust-lang.org/learn/get-started) and then you can `cargo install --git https://github.com/alexjago/nparty`. 
 
 ## Setup
 
@@ -48,6 +28,10 @@ You can also automatically download (and, where possible, format-upgrade) all of
 **Please note that the download is a couple of hundred megabytes.** `nparty` is clever enough to read from compressed ZIP files, so there is no need to unzip - save your disk space. However, any `.xlsx` files will need to be converted to `.csv`
 
 To do anything more than party-preferred distribution at the federal booth level, you will need additional geography data. More on that later.
+
+#### File format change
+
+The AEC has adopted a somewhat different (and improved) file format for the 2019-election preferences as compared to the 2016-election preferences. If you're working with 2016 data you'll need to run `nparty upgrade prefs` on it before performing further analysis. 
 
 ### Configuration
 
@@ -156,8 +140,36 @@ The process I follow for making a two-column spreadsheet is this:
 | 1100102             | 1153962             | 0.5560674 |
 | 1100103             | 1153967             | 1         |
 
+Header names aren't important - after all, eventually the years will change - but there must be three columns, in order: old, new, ratio.
+
 This spreadsheet shall be referred to `correspondencefile`. You can use this spreadsheet with `nparty upgrade sa1s correspondencefile [infile] [outfile]` to turn an `SA1s_Dists` defined in terms of outdated SA1s, to one defined in terms of newer SA1s.
 
 # Next Steps
 
 Having done all that, you can [simulate elections](https://abjago.net/4PP-QLD-projections-from-senate-results/predictor.html) with more precise knowledge of how people preferenced!
+
+# A Compendium of Data Sources
+
+These data sources are supplementary to those given by `nparty data`. They may be useful for the combination stage, but will almost definitely require some manual processing. 
+
+[Ben Raue has `.kml` boundary files](https://www.tallyroom.com.au/maps) for state districts. These can be spatial-joined with the SA1 Boundaries shapefile. This will be *almost* accurate at the combination stage: in some cases, SA1s are split between districts. 
+
+## Federal
+
+### ASGS 2016
+
+* [Home page](https://www.abs.gov.au/AUSSTATS/abs@.nsf/DetailsPage/1270.0.55.001July%202016?OpenDocument)
+* [SA1 boundaries shapefile](https://www.abs.gov.au/AUSSTATS/subscriber.nsf/log?openagent&1270055001_sa1_2016_aust_shape.zip&1270.0.55.001&Data%20Cubes&6F308688D810CEF3CA257FED0013C62D&0&July%202016&12.07.2016&Latest)
+* **[2011 to 2016 SA1 correspondence source (some extraction required)](https://www.abs.gov.au/AUSSTATS/subscriber.nsf/log?openagent&cg_sa1_2011_sa1_2016.zip&1270.0.55.001&Data%20Cubes&7FA4ED413ECF9336CA257FED0014C10D&0&July%202016&12.07.2016&Latest)**
+
+## QLD
+
+* https://www.ecq.qld.gov.au/electoral-boundaries/state-electorate-redistributions
+
+## WA
+
+* https://www.elections.wa.gov.au/enrol/enrolment-statistics/state-enrolment-reports
+** District and LGA to SA1 with enrolment population
+** [September 2021](https://www.elections.wa.gov.au/sites/default/files/Copy%20of%20Enrolment%20Statistics%20by%20SA1%20-%20210930%20(State).xlsx)
+** [December 2021](https://www.elections.wa.gov.au/sites/default/files/Copy%20of%20Enrolment%20Statistics%20by%20SA1%20-%20211222%20(State).xlsx)
+

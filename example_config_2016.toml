@@ -1,0 +1,75 @@
+# Example configuration file for `nparty` for the 2016 Federal election.
+
+# Please note that the AEC has changed ballot CSV formats from 2016 to 2019.
+# `nparty` currently can upgrade 2016 files to 2019 as a standalone operation,
+# but otherwise cannot read them. Use `nparty upgrade prefs` to convert formats. 
+
+# 2016 style begins like this:
+# ElectorateNm,VoteCollectionPointNm,VoteCollectionPointId,BatchNo,PaperNo,Preferences
+# ------------,---------------------,---------------------,-------,-------,-----------
+
+# Whereas 2019 style begins like this:
+# State,Division,Vote Collection Point Name,Vote Collection Point ID,Batch No,Paper No,{ticket and candidate columns follow ...}
+# NT,Lingiari,Alice Springs,1,1,1,{preferences follow ...}
+
+[DEFAULT]
+
+# The [DEFAULT] section is special; it has the top-level information.
+# You can also override any of the values from this section in the other sections, if need be.
+# Please note that this functionality is not part of the TOML spec but implemented by nparty itself.
+
+###### Inputs ######
+
+# The year of the (Senate) election. REQUIRED.
+YEAR = "2016"
+
+# POLLING_PLACES_PATH is the relatively tiny spreadsheet detailing all the polling places. 
+#  REQUIRED for the first (Distribution) stage of analysis and therefore all. 
+POLLING_PLACES_PATH = "path/to/2016/GeneralPollingPlacesDownload-20499.csv"
+
+# SA1S_BREAKDOWN_PATH is the reasonably large spreadsheet detailing the number of voters from each
+#  SA1 at each booth {technically for House, but we compensate}.
+#  Required for the second (Projection) stage. 
+SA1S_BREAKDOWN_PATH = "path/to/2016/polling-place-by-sa1s-2016.csv"
+
+###### Outputs ######
+
+# OUTPUT_DIR is the folder to put the output in. REQUIRED.
+OUTPUT_DIR = "output/AUS_2016"
+
+# These next three files will go in OUTPUT_DIR/Scenario/filename.csv
+# All are REQUIRED (but may go unused).
+
+# NPP_BOOTHS_FN defines the filename of the spreadsheet detailing NPP preferences by booth.
+NPP_BOOTHS_FN = "NPP_Booths.csv"
+
+# SA1S_PREFS_FN defines the filename of the spreadsheet detailing NPP preferences by SA1.
+SA1S_PREFS_FN = "SA1_Prefs.csv"
+
+# NPP_DISTS_FN defines the filename of the spreadsheet detailing NPP preferences by state/local district.
+NPP_DISTS_FN = "District_NPPs.csv"
+
+
+########################################################################################################################
+######                                                                                                            ######
+######                        Welcome to the especially editable part of the file!                                ######
+######                                                                                                            ######
+######            All non-DEFAULT sections define "Scenarios" - competing groups of [pseudo]candidates.           ######
+######                                                                                                            ######
+########################################################################################################################
+
+# Each Scenario is defined as a section: [scenario_name]
+[NSW_3PP]
+
+# nparty can look inside ZIP files and extract a CSV (if it's the only thing in the ZIP)
+PREFS_PATH = "path/to/2016/aec-senate-formalpreferences-20499-NSW_to19.zip"
+# 
+# SA1S_DISTS_PATH =
+STATE = "NSW"
+# The group in the scenario are defined in a subsection: [scenario.GROUPS]
+[NSW_3PP.GROUPS]
+# Each group is defined as a group code and a list of tickets and/or candidates:
+# groupcode = ["columnID:name", "columnID:name", ...]
+Alp = ["N:Labor", "N:DASTYARI Sam", "N:McALLISTER Jenny", "N:O'NEILL Deborah", "N:CAMERON Doug", "N:MORIARTY Tara", "N:THOMSON Vivien", "N:ZHOU Shuo", "N:BANDARA Jagath", "N:RIZVI Miriam", "N:O'SULLIVAN Mary", "N:HAN Paul Yi-Wen", "N:COSTELLO Alexandra"]
+Lnp = ["F:Liberal/The Nationals", "F:PAYNE Marise", "F:SINODINOS Arthur", "F:NASH Fiona", "F:FIERRAVANTI-WELLS Concetta", "F:WILLIAMS John", "F:HUGHES Hollie", "F:MOLAN Jim", "F:FANG Wes", "F:OK Sang", "F:RICHARDS Sarah", "F:LEVINY Fiona", "F:McGAHEY Victoria"]
+Grn = ["AL:The Greens", "AL:RHIANNON Lee", "AL:OSBORNE Michael", "AL:OAKLEY Jane", "AL:JANARTHANA Jananie", "AL:KONTELLIS Marika", "AL:BRYANT Gareth", "AL:HO Christina", "AL:MAIDEN Kathryn", "AL:GOODLASS Ray", "AL:DONAYRE Christine", "AL:PARKER Kate", "AL:FERNANDES Sarah"]

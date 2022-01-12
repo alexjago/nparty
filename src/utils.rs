@@ -351,15 +351,8 @@ where
         .flexible(true)
         .from_reader(partyfile);
 
-    let mut rowcounter = 0;
-
-    for result in rdr.deserialize() {
-        rowcounter += 1;
-        if rowcounter <= 2 {
-            continue; // skip useless metadata starter rows
-        }
-        let pr: PartyRecord = result.context("could not understand row in party-details file")?;
-
+    for pr in rdr.deserialize::<PartyRecord>().flatten() {
+        // skip weird header rows and anything else
         if !pr.registered_party_ab.is_empty() {
             bigdict.insert(pr.registered_party_ab, to_title_case(&pr.party_ab));
         }
@@ -382,7 +375,7 @@ pub struct FilteredCandidate {
     filter: regex::Regex,
     pub surname: String,
     pub ballot_given_nm: String,
-    pub ballot_number: String,
+    pub ballot_number: BallotNumber,
     pub party: String,
     pub ticket: String,
     cands_matches: [bool; 5],
@@ -411,7 +404,7 @@ impl FilteredCandidate {
     pub fn fmt_tty(&self) -> String {
         let mut surname = self.surname.clone();
         let mut ballot_given_nm = self.ballot_given_nm.clone();
-        let mut ballot_number = self.ballot_number.clone();
+        let mut ballot_number = format!("{:4}", self.ballot_number);
         let mut party = self.party.clone();
         let mut ticket = self.ticket.clone();
 
@@ -424,7 +417,7 @@ impl FilteredCandidate {
             ballot_given_nm = term::decorate_range(&ballot_given_nm, s.range(), term::UNDERLINE);
         }
         if self.cands_matches[2] {
-            let s = self.filter.find(&self.ballot_number).unwrap();
+            let s = self.filter.find(&ballot_number).unwrap();
             ballot_number = term::decorate_range(&ballot_number, s.range(), term::UNDERLINE);
         }
         if self.cands_matches[3] {
@@ -472,7 +465,7 @@ pub fn filter_candidates(
                     filter: filt.clone(),
                     surname: cv.surname.clone(),
                     ballot_given_nm: cv.ballot_given_nm.clone(),
-                    ballot_number: cv.ballot_number.clone().to_string(),
+                    ballot_number: cv.ballot_number,
                     party: cv.party.clone().to_string(),
                     ticket: tk.to_string(),
                     cands_matches,
@@ -480,6 +473,8 @@ pub fn filter_candidates(
             }
         }
     }
+    // sort by candidate number
+    data.sort_by(|a, b| a.ballot_number.cmp(&b.ballot_number));
     data
 }
 

@@ -2,8 +2,9 @@
 //! Generation and loading of configuration files.
 
 use anyhow::{bail, Context, Result};
+use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fs::read_to_string;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -72,6 +73,7 @@ pub struct Scenario {
     #[serde(rename = "STATE")]
     pub state: StateAb,
     #[serde(rename = "GROUPS")]
+    #[serde(with = "indexmap::serde_seq")]
     pub groups: Parties,
     // Optional paths are those for the latter two phases
 }
@@ -166,7 +168,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
             get_attribute("STATE", scenario, &defaults, StateAb::from).context("Missing STATE")?;
 
         // Really the only complicated parse is the GROUPS.
-        let mut groups: Parties = BTreeMap::new();
+        let mut groups: Parties = IndexMap::new();
         if scenario.contains_key("GROUPS") {
             for (group_name, group) in scenario.get("GROUPS").unwrap().as_table().unwrap().iter() {
                 let groupvec = group
@@ -388,15 +390,15 @@ pub fn cli_scenarios(
         .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
 
         // now for the tricky bit
-        let mut groups = Parties::new();
+        let mut groups = IndexMap::new();
 
         // Add a Group
         let mut add_group = String::from("Y");
 
         while add_group.starts_with('Y') || add_group.is_empty() {
             // what is a group but a list of candidates?
-            let mut group_cands: HashSet<String> = HashSet::new();
-            let mut group_parties: HashSet<String> = HashSet::new();
+            let mut group_cands: IndexSet<String> = IndexSet::new();
+            let mut group_parties: IndexSet<String> = IndexSet::new();
 
             // search-filter candidates in a loop to add to the group
             loop {

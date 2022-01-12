@@ -4,6 +4,7 @@
 ///   (0!) + (4 * 1!) + (6 * 2!) + (4 * 3!) + (4!)
 use anyhow::{bail, Context, Result};
 use factorial::Factorial;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::create_dir_all;
@@ -109,7 +110,7 @@ pub struct BoothRecord {
 }
 
 pub type DivBooth = (String, String);
-pub type Parties = BTreeMap<String, Vec<String>>;
+pub type Parties = IndexMap<String, Vec<String>>;
 
 // TODO: make this take Read objects instead of paths.
 //       otherwise it'll never work in WASM.

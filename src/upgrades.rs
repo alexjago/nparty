@@ -1,6 +1,7 @@
+use crate::app::CliUpgradeSa1s;
 /// This file exists to contain format conversions
 use crate::utils::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 
 // The candidate file format is sufficiently unchanged
@@ -157,4 +158,100 @@ pub fn era_sniff(infile: &mut dyn Read) -> std::io::Result<usize> {
         _ => 2019,
     };
     Ok(rez)
+}
+
+pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> anyhow::Result<()> {
+    // 1. Read the correspondence file into a map
+
+    #[derive(Debug)]
+    struct CorrespondenceRow {
+        old: String,
+        new: String,
+        ratio: f64,
+    }
+    // "RATIO of SA1_7DIGITCODE_old is in SA1_7DIGITCODE_new"
+    let mut corrs: BTreeMap<String, Vec<(String, f64)>> = BTreeMap::new();
+    let mut cf = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_path(&args.correspondence_file)?;
+    for record in cf.records() {
+        let r = record?;
+        // positional deserialise
+        let row = CorrespondenceRow {
+            old: r[0].to_string(),
+            new: r[1].to_string(),
+            ratio: r[2].parse::<f64>().ok().unwrap_or(0.0_f64),
+        };
+        corrs
+            .entry(row.old)
+            .or_insert_with(Vec::new)
+            .push((row.new, row.ratio));
+    }
+
+    // 2. Read and convert the input file
+
+    #[derive(Debug, Serialize)]
+    #[allow(non_snake_case)]
+    struct Sa1sDist {
+        SA1_Id: String,
+        Dist_Name: String,
+        Pop: f64,
+        Pop_Share: f64,
+    }
+
+    // {NEW_SA1 : {DIST : Pop}}
+    let mut converted: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
+
+    let mut oldf = csv::ReaderBuilder::new()
+        .has_headers(!args.no_infile_headers)
+        .from_path(&args.input)?;
+
+    // Previously, we deserialised by position, not by header name
+    //
+
+    for record in oldf.records() {
+        let r = record?;
+        // positional deserialisation because we may only have 2 columns
+        let row = Sa1sDist {
+            SA1_Id: r[0].to_string(),
+            Dist_Name: r[1].to_string(),
+            Pop: r.get(2).and_then(|x| x.parse::<f64>().ok()).unwrap_or(0.0),
+            Pop_Share: 0.0,
+        };
+        // "RATIO of SA1_7DIGITCODE_old is in SA1_7DIGITCODE_new"
+        let old_sa1 = row.SA1_Id.clone();
+        if let Some(split) = corrs.get(&old_sa1) {
+            for (new_sa1, ratio) in split.iter() {
+                let e = converted
+                    .entry(new_sa1.clone())
+                    .or_insert_with(BTreeMap::new)
+                    .entry(row.Dist_Name.clone())
+                    .or_default();
+                *e += row.Pop * ratio;
+                // we'll have to fill in PopShare later
+            }
+        }
+    }
+
+    // 3. Finalise and write results
+    let mut outf = csv::WriterBuilder::new()
+        .has_headers(true)
+        .from_path(args.output)?;
+    for (new, dists) in converted {
+        let mut poptotal: f64 = dists.values().sum();
+        if poptotal == 0.0 {
+            poptotal = 1.0;
+        }
+
+        for (d, p) in dists {
+            outf.serialize(Sa1sDist {
+                SA1_Id: new.clone(),
+                Dist_Name: d,
+                Pop: p,
+                Pop_Share: p / poptotal,
+            })?;
+        }
+        outf.flush()?;
+    }
+    Ok(())
 }
