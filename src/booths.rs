@@ -1,4 +1,4 @@
-/// This file translates Booth_NPP.py
+//! The n-party-preferred distribution phase.
 /// We want to reduce each unique preference sequence to some ordering
 ///    of each of the parties. For example, for four parties there are 65 orderings:
 ///   (0!) + (4 * 1!) + (6 * 2!) + (4 * 3!) + (4!)
@@ -91,6 +91,7 @@ pub fn make_combo_tree(groups_count: usize) -> BTreeMap<Vec<usize>, usize> {
 /// This represents a row in the polling_places file
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)] // look, this isn't aesthetic but it matches the file
+#[allow(dead_code)]
 pub struct BoothRecord {
     State: StateAb,
     DivisionID: usize,
@@ -224,12 +225,15 @@ pub fn booth_npps(
     let atl_start = PREFS_FIELD_NAMES.len(); // relative to in general
     let mut btl_start: usize = 0; // relative to atl_start
 
-    for i in (atl_start + 1)..prefs_headers.len() {
+    // 2022 lack-of-quoting problems
+    let prefs_headers_fixed = fix_prefs_headers(prefs_headers, atl_start);
+
+    for i in (atl_start + 1)..prefs_headers_fixed.len() {
         // The first ticket is labelled "A" and there are two candidates per ticket.
         // So the _second_ "A:", if it exists, is the first BTL field.
         // If it doesn't exist (loop exhausts) then _all_ we have are UnGrouped candidates
         // and thus the first BTL field is simply the first prefs field at all.
-        if prefs_headers
+        if prefs_headers_fixed
             .get(i)
             .context("No candidates")?
             .starts_with("A:")
@@ -240,33 +244,20 @@ pub fn booth_npps(
     }
     let btl_start = btl_start; // make immutable now
 
-    // eprintln!("\nATL start: {}\tBTL start: +{}\t Total: {}", atl_start, btl_start, prefs_headers.len());
-
     // Create candidate number index
 
     let mut cand_nums: HashMap<&str, usize> = HashMap::new();
-    for (i, pref) in prefs_headers.iter().skip(atl_start).enumerate() {
+    for (i, pref) in prefs_headers_fixed.iter().skip(atl_start).enumerate() {
         cand_nums.insert(pref, 1 + i);
     }
     let cand_nums = cand_nums; // make immutable now
 
-    // eprintln!(
-    //     "\nCandidate numbers: \n{:?}",
-    //     cand_nums
-    //         .iter()
-    //         .sorted_by(|(_, av), (_, bv)| Ord::cmp(av, bv))
-    // );
-
-    // finally, some lookups for the groups of interest...
-
-    // eprintln!("\nPARTIES:\n{:#?}", parties);
-
+    // set up some lookups...
     let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
     let mut groups_atl: HashMap<usize, Vec<usize>> = HashMap::new();
     let mut groups_btl: HashMap<usize, Vec<usize>> = HashMap::new();
 
     for (party, cand_list) in parties.iter() {
-        // eprintln!("{}   {:?}", party, cand_list);
         let mut pcand_nums = Vec::new();
         let mut acands = Vec::new();
         let mut bcands = Vec::new();
@@ -290,6 +281,7 @@ pub fn booth_npps(
         groups_btl.insert(p_idx, bcands);
     }
 
+    // eprintln!("cand_nums: {:?}", cand_nums);
     // eprintln!("\nFull Groups: {:?}", groups);
     // eprintln!("ATL Groups: {:?}", groups_atl);
     // eprintln!("BTL Groups: {:?}", groups_btl);
@@ -302,10 +294,8 @@ pub fn booth_npps(
     let mut booth_counts: HashMap<DivBooth, Vec<usize>> = HashMap::new();
 
     let mut division_specials: BTreeMap<DivBooth, Vec<usize>> = BTreeMap::new();
-    // let mut ppids = HashMap::new();
 
-    let cands_count = prefs_headers.len() - atl_start;
-    // let mut seq : Vec<usize> = Vec::with_capacity(cands_count); // just hoisting an alloc
+    let cands_count = (&prefs_headers_fixed).len() - atl_start;
 
     // we need to figure out how we're going to deserialize each record
     // or not - we need custom logic for most of it anyway
@@ -331,6 +321,8 @@ pub fn booth_npps(
         // Now we analyse nPP. We categorise the preference sequence by its highest value for each group of candidates
 
         // first we must determine if it's ATL or BTL.
+        // Per section 268A of the Commonwealth Electoral Act, a vote is BTL-formal if it has at least [1] through [6] marked BTL
+        // and BTL-formality takes priority over ATL-formality.
         // NOTE 2020-05-14: I am quite confident this ATL-vs-BTL code is correct. It produces the correct number of BTLs...
         // To be fair, non-BTLs don't have trailing commas to confuse the issue with...
         let mut is_btl: bool = false; // we must test whether it is, but...
@@ -339,11 +331,13 @@ pub fn booth_npps(
             // ^^^ this is the actual biggest speedup for default 2019 files.
             // If there aren't any fields for BTLs, there aren't any at all...
             // and the 2019 files don't bother with trailing commas.
-            let mut btl_counts: [u16; 6] = [0; 6]; // Note zero-indexing now!
-                                                   // fragility note: wrapping adds.
-                                                   // This is only a problem if there are more than 65536 candidates BTL and someone plays extreme silly buggers
-                                                   // .skip() is a glorious thing, how did I not know it before
+            let mut btl_counts: [usize; 6] = [0; 6]; // Note zero-indexing now!
+                                                     // fragility note: wrapping adds.
+                                                     // This is only a problem if there are more than usize::MAX candidates BTL
+                                                     // ... and someone plays *extreme* silly buggers
+
             for v in record.iter().skip(bsa) {
+                // .skip() is a glorious thing, how did I not know it before
                 // NB: this breaks if there's whitespace in the file.
                 // We need to trim().
                 // Given the whole lack-of-trailing-comma-sitch it won't even hurt too much
@@ -418,8 +412,6 @@ pub fn booth_npps(
                 ttyjump(),
                 progress
             );
-            // eprintln!("{:#?}", &record);
-            // eprintln!("{:?}\t{}", &bests, &combinations[pref_idx]);
         }
     }
 
@@ -485,7 +477,7 @@ pub fn booth_npps(
     for (bk, bv) in booth_counts.iter().sorted() {
         let br = match booths.get(bk) {
             Some(x) => x,
-            _ => bail!("It's really weird, but {:#?} isn't in `booths`.", bk),
+            _ => bail!("It's really weird, but {:?} isn't in `booths`.", bk),
         };
         let mut bdeets = vec![
             br.PollingPlaceID.to_string(),

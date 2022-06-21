@@ -34,5 +34,23 @@
             "VIC" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-VIC.zip",
             "WA" : "http://results.aec.gov.au/24310/Website/External/aec-senate-formalpreferences-24310-WA.zip",
         }
-    )
+    ),
+    "2022 Federal Election": DlItems(
+        year: "2022",
+        id: "27966",
+        polling_places: "",
+        political_parties: "",
+        sa1s_pps: "",
+        candidates: "",
+        formal_prefs: {
+            "ACT" : "https://tallyroom.aec.gov.au/External/aec-senate-formalpreferences-27966-ACT.zip",
+            "NSW" : "http://tallyroom.aec.gov.au/External/aec-senate-formalpreferences-27966-NSW.zip",
+            "NT" : "http://tallyroom.aec.gov.au/External/aec-senate-formalpreferences-27966-NT.zip",
+            "QLD" : "http://tallyroom.aec.gov.au/External/aec-senate-formalpreferences-27966-QLD.zip",
+            "SA" : "http://tallyroom.aec.gov.au/External/aec-senate-formalpreferences-27966-SA.zip",
+            "TAS" : "http://tallyroom.aec.gov.au/External/aec-senate-formalpreferences-27966-TAS.zip",
+            "VIC" : "http://tallyroom.aec.gov.au/External/aec-senate-formalpreferences-27966-VIC.zip",
+            "WA" : "http://tallyroom.aec.gov.au/External/aec-senate-formalpreferences-27966-WA.zip",
+        }
+    ),
 }

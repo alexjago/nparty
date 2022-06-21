@@ -1,13 +1,16 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs::{create_dir_all, write, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use crate::utils::fetch_blocking;
 
 // TODO: calamine for conversions...
 
 // const STATES: [&str; 8] = ["ACT", "NT", "NSW", "QLD", "SA", "TAS", "VIC", "WA"];
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct DlItems {
     year: String,
     id: String,
@@ -18,11 +21,12 @@ pub struct DlItems {
     formal_prefs: BTreeMap<String, String>,
 }
 
-pub fn make_data() -> HashMap<String, DlItems> {
-    ron::de::from_str::<HashMap<String, DlItems>>(include_str!("data_files/downloads.ron")).unwrap()
+pub fn make_data() -> BTreeMap<String, DlItems> {
+    ron::de::from_str::<BTreeMap<String, DlItems>>(include_str!("data_files/downloads.ron"))
+        .unwrap()
 }
 
-fn make_html(texts: &HashMap<String, DlItems>) -> String {
+fn make_html(texts: &BTreeMap<String, DlItems>) -> String {
     let template_html: &str = include_str!("data_files/data_template.html");
     let template_list: &str = include_str!("data_files/list_template.html");
 
@@ -84,7 +88,7 @@ pub fn examine_txt() {
     }
 }
 
-pub fn download(dldir: &Path) {
+pub fn download(dldir: &Path) -> anyhow::Result<()> {
     let sacred_texts = make_data();
 
     let mut dldir = dldir;
@@ -111,22 +115,28 @@ pub fn download(dldir: &Path) {
         }
 
         for link in all_urls {
-            let linkpath = url::Url::parse(&link).unwrap();
-            let aspath = PathBuf::from(linkpath.path());
-            let mut dlto = PathBuf::from(&year_dir);
-            dlto.push(&aspath.file_name().unwrap());
-            // globfn omitted for now
-            if !dlto.is_file() {
-                eprintln!("Downloading: {}", &dlto.display());
-                let response = reqwest::blocking::get(&link)
-                    .unwrap_or_else(|_| {
-                        panic!("Error downloading {:#?}", &aspath.file_name().unwrap())
-                    })
-                    .bytes()
-                    .unwrap();
-                write(&dlto, response).expect("Error writing file");
-            } else if dlto.is_file() {
-                skips += 1;
+            if let Ok(linkpath) = url::Url::parse(&link) {
+                let aspath = PathBuf::from(linkpath.path());
+                let mut dlto = PathBuf::from(&year_dir);
+                dlto.push(&aspath.file_name().unwrap());
+                // globfn omitted for now
+                if !dlto.is_file() {
+                    eprintln!("Downloading: {}", &dlto.display());
+
+                    match fetch_blocking(&link) {
+                        Ok(response) => write(&dlto, response.bytes)
+                            .unwrap_or_else(|e| eprintln!("Error writing file: {:?}", e)),
+                        Err(e) => eprintln!(
+                            "Error downloading {:#?}:\n{}",
+                            &aspath.file_name().unwrap(),
+                            e
+                        ),
+                    };
+                } else if dlto.is_file() {
+                    skips += 1;
+                }
+            } else {
+                eprintln!("Error parsing URL `{}`; skipping.", &link);
             }
         }
     }
@@ -135,4 +145,5 @@ pub fn download(dldir: &Path) {
     } else {
         eprintln!("Done! Skipped {} already-downloaded files.", skips);
     }
+    Ok(())
 }

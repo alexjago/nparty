@@ -13,7 +13,7 @@ This project, however, takes its name from an earlier step in the analysis: a pa
 
 # Let's Go!
 
-Command-line binaries for 64-bit Intel/AMD are available for Mac, Linux and Windows here: https://github.com/alexjago/nparty/releases
+Command-line binaries for 64-bit Intel/AMD are available for Mac, Linux (Ubuntu) and Windows here: https://github.com/alexjago/nparty/releases
 
 To install from source, you'll need to first have [a recent stable Rust installed](https://www.rust-lang.org/learn/get-started) and then you can `cargo install --git https://github.com/alexjago/nparty`. 
 
@@ -59,7 +59,7 @@ The three analysis stages (distribute, project, & combine) are invoked by `npart
 
 ### N-Party-Preferred distribution
 
-Party-preferred distribution is the first stage of actual analysis. It is invoked individually by `nparty run --distribute`.
+Party-preferred distribution is the first stage of actual analysis. It is invoked individually by `nparty run --phase distribute`.
 
 This command typically takes a couple of minutes in the larger states, and by convention outputs a file called `Booth_NPPs.csv`. This is a spreadsheet where each row represents a polling place, and (most of) the columns represent the number of ballots cast matching a preference order. Absents, postals, declaration pre-polls and provisionals have been aggregated.
 
@@ -71,7 +71,7 @@ SA1 projection is the second stage of analysis.
 
 The AEC provides a spreadsheet which says "this many people from this SA1 voted at this polling place". Please note that the 2016 version of this spreadsheet is supplied as an `.xlsx` and hence needs to be converted to `.csv`.
 
-Usually this step will be performed automatically as part of `nparty run`, but it can be individually invoked by `nparty run --project`.
+Usually this step will be performed automatically as part of `nparty run`, but it can be individually invoked by `nparty run --phase distribute`.
 
 By convention, this stage outputs a file called `SA1_Prefs.csv`.
 
@@ -79,7 +79,7 @@ By convention, this stage outputs a file called `SA1_Prefs.csv`.
 
 District combination is the third stage of analysis, and will require additional work from you.
 
-It is individually invoked as `nparty run --combine` and has an additional option `--js`, which will output the results not just as a CSV, but in a format usable by the website predictor. By convention, this stage outputs a file called `District_NPPs.csv` (or `District_NPPs.js`).
+It is individually invoked as `nparty run --phase combine` and has an additional option `--js`, which will output the results not just as a CSV, but in a format usable by the website predictor. By convention, this stage outputs a file called `District_NPPs.csv` (or `District_NPPs.js`).
 
 In particular, what you'll need to find or create is a spreadsheet (referred to as `SA1s_Dists`) detailing which [parts of] SA1s are in which districts. It should look a bit like this:
 
@@ -169,7 +169,7 @@ These data sources are supplementary to those given by `nparty data`. They may b
 ## WA
 
 * https://www.elections.wa.gov.au/enrol/enrolment-statistics/state-enrolment-reports
-** District and LGA to SA1 with enrolment population
-** [September 2021](https://www.elections.wa.gov.au/sites/default/files/Copy%20of%20Enrolment%20Statistics%20by%20SA1%20-%20210930%20(State).xlsx)
-** [December 2021](https://www.elections.wa.gov.au/sites/default/files/Copy%20of%20Enrolment%20Statistics%20by%20SA1%20-%20211222%20(State).xlsx)
+  * District and LGA to SA1 with enrolment population
+  * [September 2021](https://www.elections.wa.gov.au/sites/default/files/Copy%20of%20Enrolment%20Statistics%20by%20SA1%20-%20210930%20(State).xlsx)
+  * [December 2021](https://www.elections.wa.gov.au/sites/default/files/Copy%20of%20Enrolment%20Statistics%20by%20SA1%20-%20211222%20(State).xlsx)
 

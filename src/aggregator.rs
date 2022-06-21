@@ -1,17 +1,10 @@
-//! Conversion of `SA1s_Aggregator.py`
-//!
-//! Step-by-step:
-//! 1. takes SA1-by-SA1 NPP data
-//! 2. takes SA1 population & district split data
-//! 3. scales (1) to fit [the totals of] (2)
-//! 4. splits (3) according to (2) where necessary
-//! 5. aggregates (4) by district
-
+//! The SA1s-to-districts combination phase.
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{create_dir_all, File};
+use std::io::{self, Write};
 use std::path::Path;
 
 pub fn aggregate(
@@ -158,7 +151,7 @@ pub fn aggregate(
     for i in sp_headers.iter().skip(1) {
         header.push(i.to_string());
     }
-    eprintln!("{:?}", header);
+    // eprintln!("{:?}", header);
 
     dist_wtr
         .write_record(&header)
@@ -194,6 +187,7 @@ pub fn aggregate(
             File::create(json_path).context("Error creating SA1s aggregate JSON file")?;
         serde_json::to_writer(json_file, &out).context("Error writing SA1s aggregate JSON file")?;
     }
-
+    eprintln!("\t\tDone!");
+    io::stderr().flush()?;
     Ok(())
 }

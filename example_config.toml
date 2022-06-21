@@ -1,6 +1,4 @@
-# This is a configuration file for `nparty`
-# This file uses the May 2020 format introduced with the Rust rewrite. 
-# I expect this configuration format will be forward-compatible.
+# Example configuration file for `nparty` for the 2019 Federal election
 
 # This example file is still pretty usable. It defines NPP contests, matching
 # the actual winners of the 2019 Senate races, plus some 3PPs (Labor, Coalition, Greens)

@@ -1,5 +1,9 @@
+//! Assorted utility structs and functions.
+
 #![allow(clippy::upper_case_acronyms)]
 use anyhow::{Context, Result};
+use csv::StringRecord;
+use ehttp;
 use inflector::cases::titlecase::to_title_case;
 use std::char;
 use std::collections::HashMap;
@@ -7,10 +11,12 @@ use std::fmt;
 use std::fs::File;
 use std::io::{stdin, stdout, Cursor, Read, Seek, SeekFrom, Write};
 use std::path;
+use std::str::FromStr;
 
 use super::term;
 use SeekFrom::Start;
 
+pub use ehttp::Response;
 pub type BallotNumber = u32; // if you have more than 4 billion candidates on the ballot, something has gone very wrong
 pub type TicketString = String; // is this really needed? eh
 
@@ -110,8 +116,7 @@ impl PrettifyNumber for BallotNumber {
 // The Rusty way is to define a struct for what gets returned, which seems eminently sensible
 // we might need several things
 
-#[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Copy, Clone, enum_utils::FromStr)]
-#[enumeration(case_insensitive)]
+#[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Copy, Clone)]
 pub enum StateAb {
     ACT,
     NSW,
@@ -129,16 +134,26 @@ pub trait ToStateAb {
 
 impl ToStateAb for &str {
     fn to_state_ab(self) -> StateAb {
-        match self.to_uppercase().as_str() {
-            "ACT" => StateAb::ACT,
-            "NSW" => StateAb::NSW,
-            "NT" => StateAb::NT,
-            "QLD" => StateAb::QLD,
-            "SA" => StateAb::SA,
-            "TAS" => StateAb::TAS,
-            "VIC" => StateAb::VIC,
-            "WA" => StateAb::WA,
-            _ => panic!("Jurisdiction does not exist!"),
+        match StateAb::from_str(self) {
+            Ok(r) => r,
+            Err(e) => panic!("{}", e),
+        }
+    }
+}
+
+impl FromStr for StateAb {
+    type Err = &'static str;
+    fn from_str(item: &str) -> std::result::Result<Self, Self::Err> {
+        match item.to_uppercase().as_str() {
+            "ACT" => Ok(StateAb::ACT),
+            "NSW" => Ok(StateAb::NSW),
+            "NT" => Ok(StateAb::NT),
+            "QLD" => Ok(StateAb::QLD),
+            "SA" => Ok(StateAb::SA),
+            "TAS" => Ok(StateAb::TAS),
+            "VIC" => Ok(StateAb::VIC),
+            "WA" => Ok(StateAb::WA),
+            _ => Err("Jurisdiction does not exist"),
         }
     }
 }
@@ -213,6 +228,44 @@ struct CandidateRecord {
     pub surname: String,
     pub ballot_given_nm: String,
     pub party_ballot_nm: String,
+}
+
+/// If a 2022 header is missing quotes around some values they'll be incorrectly split.
+/// This unsplits them in a semi-intelligent fashion.
+pub fn fix_prefs_headers(prefs_headers_raw: StringRecord, atl_start: usize) -> Vec<String> {
+    let mut prefs_headers_fixed: Vec<String> = Vec::with_capacity(prefs_headers_raw.len());
+
+    // opening six are fine...
+    for s in prefs_headers_raw.iter().take(atl_start) {
+        prefs_headers_fixed.push(s.into());
+    }
+
+    // here we iterate over the entries, checking if they start with the expected TicketString
+    // if they don't, then we assume their entry has been broken by lack of quoting
+    // and join it back up to the previous entry
+    let mut idx: BallotNumber = 0;
+    for s in prefs_headers_raw.iter().skip(atl_start) {
+        if s.starts_with("A:") {
+            // set/reset
+            idx = 1;
+        }
+        if s.starts_with(&(idx.to_ticket() + ":")) || s.starts_with("UG:") {
+            // expected-case for ATLs (and UGs)
+            prefs_headers_fixed.push(s.into());
+            idx += 1;
+        } else if s.starts_with(&((idx - 1).to_ticket() + ":")) {
+            // second and subsequent BTL candidates of a ticket
+            prefs_headers_fixed.push(s.into());
+        } else {
+            // if s does NOT start with a valid TicketString-colon...
+            // coalesce
+            let mut start = prefs_headers_fixed.pop().unwrap_or_else(String::new);
+            start += ","; // put back the missing comma
+            start += s;
+            prefs_headers_fixed.push(start);
+        }
+    }
+    prefs_headers_fixed
 }
 
 pub fn read_candidates<T>(candsfile: T) -> Result<CandsData>
@@ -329,6 +382,7 @@ where
 /// Specifically, the fields we care about.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+#[allow(dead_code)]
 pub struct PartyRecord {
     state_ab: StateAb,
     party_ab: String,
@@ -582,6 +636,15 @@ pub fn input(prompt: &str) -> std::io::Result<String> {
     let mut response = String::new();
     stdin().read_line(&mut response)?;
     Ok(response.trim().to_string())
+}
+
+/// Fetch a URL in a blocking fashion despite async interface of `ehttp`.
+/// Uses a sync::mpsc::channel under the hood.
+pub fn fetch_blocking(url: impl ToString) -> Result<ehttp::Response, String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let req = ehttp::Request::get(url);
+    ehttp::fetch(req, move |r| sender.send(r).unwrap());
+    return receiver.recv().unwrap();
 }
 
 #[cfg(test)]

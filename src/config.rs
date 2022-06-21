@@ -1,4 +1,3 @@
-//! This file translates Configuration.py
 //! Generation and loading of configuration files.
 
 use anyhow::{bail, Context, Result};

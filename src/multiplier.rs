@@ -1,10 +1,10 @@
+//! The booths-to-SA1s projection phase.
 use super::booths::{group_combos, Parties};
 use super::utils::StateAb;
 use anyhow::{bail, Context, Result};
 use std::collections::BTreeMap;
 use std::fs::create_dir_all;
 
-/// Projection phase
 /// This file corresponds to `SA1s_Multiplier.py`
 
 /// The AEC have given us a
@@ -205,6 +205,6 @@ pub fn project(
     }
 
     sa1_wtr.flush().context("error finalising SA1_prefs")?;
-
+    eprintln!("\t\tDone!");
     Ok(())
 }

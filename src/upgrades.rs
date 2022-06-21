@@ -1,5 +1,5 @@
+//! Ballot-file format upgrades and SA1 geography upgrades.
 use crate::app::CliUpgradeSa1s;
-/// This file exists to contain format conversions
 use crate::utils::*;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};

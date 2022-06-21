@@ -1,3 +1,5 @@
+//! The main app logic: argument structs and most top-level functions
+
 use std::collections::BTreeMap;
 use std::fs::{metadata, File};
 use std::io::Write;
@@ -8,7 +10,7 @@ use crate::config::*;
 use crate::utils::ToStateAb;
 use crate::*;
 use anyhow::{bail, Context, Result};
-use clap::{AppSettings, Parser, Subcommand, ValueHint};
+use clap::{AppSettings, ArgEnum, Parser, Subcommand, ValueHint};
 
 #[derive(Parser, Debug)]
 #[clap(version, about)]
@@ -51,7 +53,7 @@ pub enum CliData {
         #[clap(parse(from_os_str))]
         DL_FOLDER: PathBuf,
     },
-    /// write list of downloads to FILE as HTML, or as plain text stdout if no file is specified
+    /// write list of downloads to FILE as HTML, or as plain text to stdout if no file is specified
     Examine {
         #[clap(value_hint = ValueHint::FilePath)]
         #[clap(parse(from_os_str))]
@@ -181,22 +183,13 @@ pub struct CliReadme {
 
 /// Run scenarios from the configuration file.
 #[derive(Parser, Debug, PartialEq)]
-#[clap(after_help = "Note: You probably don't need to worry about [-c | -d | -p].")]
 pub struct CliRun {
-    /// Perform ONLY the party-preferred distribution phase
-    #[clap(long, short, conflicts_with_all(&["js", "combine", "project"]))]
-    pub distribute: bool,
+    /// Run a specific phase of analysis
+    #[clap(long, arg_enum, default_value_t = CliRunPhase::All)]
+    pub phase: CliRunPhase,
 
-    /// Perform ONLY the polling-places to SA1s projection phase
-    #[clap(long, short, conflicts_with_all(&["js", "combine", "distribute"]))]
-    pub project: bool,
-
-    /// Perform ONLY the SA1s to districts combination phase
-    #[clap(long, short, conflicts_with_all(&["js", "distribute", "project"]))]
-    pub combine: bool,
-
-    /// Also output JavaScript from the combination stage, for the website predictor. Ignored if [-d | -p].
-    #[clap(long, conflicts_with_all(&["distribute", "project"]))]
+    /// Also output JavaScript from the combination phase, for the website predictor
+    #[clap(long)]
     pub js: bool,
 
     /// Run a SPECIFIC scenario from the configuration file (can be given multiple times to run several scenarios)
@@ -207,6 +200,21 @@ pub struct CliRun {
     #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub configfile: PathBuf,
 }
+
+#[derive(ArgEnum, Debug, PartialEq, Clone)]
+pub enum CliRunPhase {
+    /// Run all phases (default)
+    All,
+    /// Perform ONLY the party-preferred distribution phase
+    Distribute,
+    /// Perform ONLY the polling-places to SA1s projection phase
+    Project,
+    /// Perform ONLY the SA1s to districts combination phase
+    Combine,
+}
+
+#[derive(Parser, Debug, PartialEq)]
+pub struct CliRunCombine {}
 
 // Do the heavy lifting of nparty run so as to keep things clean
 pub fn run(args: CliRun) -> anyhow::Result<()> {
@@ -233,10 +241,15 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
         let sa1p = scenario.sa1s_prefs.as_ref();
         let sa1d = scenario.sa1s_dists.as_ref();
         let nppd = scenario.npp_dists.as_ref();
-        let can_project = sa1p.is_some() && sa1b.is_some() && !args.distribute && !args.combine;
-        let can_combine =
-            sa1p.is_some() && sa1d.is_some() && nppd.is_some() && !args.distribute && !args.project;
-        let can_distribute = args.distribute || (!args.combine && !args.project);
+        let can_project = sa1p.is_some()
+            && sa1b.is_some()
+            && (args.phase == CliRunPhase::All || args.phase == CliRunPhase::Project);
+        let can_combine = sa1p.is_some()
+            && sa1d.is_some()
+            && nppd.is_some()
+            && (args.phase == CliRunPhase::All || args.phase == CliRunPhase::Combine);
+        let can_distribute =
+            args.phase == CliRunPhase::All || args.phase == CliRunPhase::Distribute;
 
         if can_distribute {
             booths::booth_npps(
@@ -257,7 +270,7 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
                 sa1b.unwrap(),
                 sa1p.unwrap(),
             )
-            .context("Could not perform projection step; stopping.")?;
+            .context("Could not perform projection phase; stopping.")?;
         }
         if can_combine {
             aggregator::aggregate(
@@ -267,9 +280,10 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
                 args.js,
                 &scenario.groups,
             )
-            .context("Could not perform combination step; stopping.")?;
+            .context("Could not perform combination phase; stopping.")?;
         }
     }
+    eprintln!("Done!");
     Ok(())
 }
 

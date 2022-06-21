@@ -112,5 +112,12 @@ And then it simply outputs a column index to increment.
 
 Sometimes there are slight differences between the Python and Rust output. I can only assume this is down to float errors. Concerning. 
 
+## Configuration CLI vs Klask GUI
 
+* chatbot config doesn't work with Klask
+* what we really need there is probably beyond what Klask can provide
+
+Libraries needed on Linux: 
+
+    sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
 

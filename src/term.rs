@@ -1,6 +1,4 @@
-//! All of this is cool but ansi_term does it better.
-
-/// Defines ANSI escape codes for convenience.
+//! Defines ANSI escape codes and methods for convenience and coolness.
 // See also
 // https://en.wikipedia.org/wiki/ANSI_escape_code#Escape_sequences
 // Just need to use `\u{1b}` rather than `\033` for the ESC
