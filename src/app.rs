@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::fs::{metadata, File};
-use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -30,7 +29,8 @@ pub enum CliCommands {
     /// View license information and acknowledgements
     License,
     List(CliList),
-    Readme(CliReadme),
+    /// View project README.md
+    Readme,
     Run(CliRun),
     #[clap(subcommand)]
     Upgrade(CliUpgrade),
@@ -168,13 +168,6 @@ pub struct CliList {
     /// The configuration file to list scenarios from
     #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub configfile: PathBuf,
-}
-
-/// Print README.md to file or standard output
-#[derive(Parser, Debug, PartialEq)]
-pub struct CliReadme {
-    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
-    pub file: Option<PathBuf>,
 }
 
 /// Run scenarios from the configuration file.
@@ -431,16 +424,10 @@ pub fn print_example_config(args: CliExample) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn print_readme(args: CliReadme) -> anyhow::Result<()> {
+pub fn print_readme() -> anyhow::Result<()> {
     let readme = include_str!("../README.md");
-    if let Some(p) = args.file {
-        let mut f = File::open(&p)?;
-        f.write_all(readme.as_bytes())
-            .context("Could not write README")
-    } else {
-        println!("{}", readme);
-        Ok(())
-    }
+    println!("{}", readme);
+    Ok(())
 }
 
 /// Before releasing, run
@@ -466,7 +453,7 @@ pub fn actual(m: Cli) -> anyhow::Result<()> {
         Example(sm) => print_example_config(sm)?,
         License => print_license()?,
         List(sm) => config::list_scenarios(&sm.configfile)?,
-        Readme(sm) => print_readme(sm)?,
+        Readme => print_readme()?,
         Run(sm) => run(sm)?,
         Upgrade(sm) => match sm {
             CliUpgrade::Prefs(ssm) => do_upgrade_prefs(ssm)?,
