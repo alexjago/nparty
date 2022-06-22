@@ -17,10 +17,6 @@ use clap::{AppSettings, ArgEnum, Parser, Subcommand, ValueHint};
 #[clap(global_setting(AppSettings::PropagateVersion))]
 #[clap(global_setting(AppSettings::UseLongFormatForHelpSubcommand))]
 pub struct Cli {
-    /// Launch a graphical version of the program
-    /// (overrides and ignores any other option/command)
-    #[clap(long, short = 'G')]
-    pub gui: bool,
     #[clap(subcommand)]
     pub command: CliCommands,
 }
@@ -453,5 +449,29 @@ pub fn print_license() -> anyhow::Result<()> {
     println!(include_str!("license-preface.txt"));
     println!("\nDependencies of nparty are listed as follows:\n");
     println!(include_str!("dependencies.txt"));
+    Ok(())
+}
+
+/// Runs the command
+pub fn actual(m: Cli) -> anyhow::Result<()> {
+    use CliCommands::*;
+    match m.command {
+        Configure(sm) => do_configure(sm)?,
+        Data(sm) => match sm {
+            CliData::Download { DL_FOLDER } => data::download(&DL_FOLDER)?,
+            CliData::Examine { FILE } => FILE
+                .filter(|x| x.exists())
+                .map_or_else(data::examine_txt, |x| data::examine_html(&x)),
+        },
+        Example(sm) => print_example_config(sm)?,
+        License => print_license()?,
+        List(sm) => config::list_scenarios(&sm.configfile)?,
+        Readme(sm) => print_readme(sm)?,
+        Run(sm) => run(sm)?,
+        Upgrade(sm) => match sm {
+            CliUpgrade::Prefs(ssm) => do_upgrade_prefs(ssm)?,
+            CliUpgrade::Sa1s(ssm) => upgrades::do_upgrade_sa1s(ssm)?,
+        },
+    }
     Ok(())
 }

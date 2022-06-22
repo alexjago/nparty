@@ -121,3 +121,18 @@ Libraries needed on Linux:
 
     sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
 
+## GUI adventures
+
+Refactor todo: have two binaries. 
+
+`Cargo.toml` specifies two binaries:
+
+    [[bin]]
+    name = "nparty"
+    path = "src/main.rs"
+
+    [[bin]]
+    name = "nparty-gui"
+    path = "src/gui.rs"
+
+Each of which has its own entrypoint to common code.

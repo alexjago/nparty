@@ -5,7 +5,7 @@ authors = ["Alex Jago <4475543+alexjago@users.noreply.github.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 description = "N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis."
-default-run = "nparty"
+default-run = "nparty-gui"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -37,3 +37,11 @@ debug = false
 [[bin]]
 name = "nparty"
 path = "src/main.rs"
+
+[[bin]]
+name = "nparty-gui"
+path = "src/gui.rs"
+
+[package.metadata.bundle.bin.nparty-gui]
+name = "nparty"
+identifier = "net.abjago.nparty"

@@ -4,8 +4,7 @@
 #[macro_use]
 extern crate serde_derive;
 
-use clap::{AppSettings, Arg, IntoApp, Parser};
-use klask::{run_app, Settings};
+use clap::Parser;
 
 mod aggregator;
 mod app;
@@ -16,51 +15,8 @@ mod multiplier;
 mod term;
 mod upgrades;
 mod utils;
+use app::Cli;
 
-use app::CliCommands::*;
-use app::*;
-
-/// Sets up the application
 fn main() -> anyhow::Result<()> {
-    let m = Cli::into_app()
-        .setting(AppSettings::IgnoreErrors)
-        .get_matches();
-    if m.is_present("gui") {
-        // Polyglot app! See https://github.com/MichalGniadek/klask/issues/22
-        let n = Cli::into_app().mut_arg("gui", |_| Arg::new("help"));
-
-        let mut settings = Settings::default();
-        settings.custom_font = Some(std::borrow::Cow::Borrowed(include_bytes!(
-            r"SourceCodePro-Medium.ttf"
-        )));
-        settings.enable_env = Some("Description".into());
-
-        run_app(n, settings, |_| {});
-        Ok(())
-    } else {
-        actual(Cli::parse())
-    }
-}
-
-/// Runs a command
-fn actual(m: Cli) -> anyhow::Result<()> {
-    match m.command {
-        Configure(sm) => do_configure(sm)?,
-        Data(sm) => match sm {
-            CliData::Download { DL_FOLDER } => data::download(&DL_FOLDER)?,
-            CliData::Examine { FILE } => FILE
-                .filter(|x| x.exists())
-                .map_or_else(data::examine_txt, |x| data::examine_html(&x)),
-        },
-        Example(sm) => print_example_config(sm)?,
-        License => print_license()?,
-        List(sm) => config::list_scenarios(&sm.configfile)?,
-        Readme(sm) => print_readme(sm)?,
-        Run(sm) => run(sm)?,
-        Upgrade(sm) => match sm {
-            CliUpgrade::Prefs(ssm) => do_upgrade_prefs(ssm)?,
-            CliUpgrade::Sa1s(ssm) => upgrades::do_upgrade_sa1s(ssm)?,
-        },
-    }
-    Ok(())
+    app::actual(Cli::parse())
 }
