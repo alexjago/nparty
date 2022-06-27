@@ -17,6 +17,7 @@ mod upgrades;
 mod utils;
 use app::Cli;
 
+/// Run the CLI.
 fn main() -> anyhow::Result<()> {
     app::actual(Cli::parse())
 }

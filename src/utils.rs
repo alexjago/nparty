@@ -3,7 +3,6 @@
 #![allow(clippy::upper_case_acronyms)]
 use anyhow::{Context, Result};
 use csv::StringRecord;
-use ehttp;
 use inflector::cases::titlecase::to_title_case;
 use std::char;
 use std::collections::HashMap;
@@ -259,7 +258,7 @@ pub fn fix_prefs_headers(prefs_headers_raw: StringRecord, atl_start: usize) -> V
         } else {
             // if s does NOT start with a valid TicketString-colon...
             // coalesce
-            let mut start = prefs_headers_fixed.pop().unwrap_or_else(String::new);
+            let mut start = prefs_headers_fixed.pop().unwrap_or_default();
             start += ","; // put back the missing comma
             start += s;
             prefs_headers_fixed.push(start);
@@ -268,6 +267,7 @@ pub fn fix_prefs_headers(prefs_headers_raw: StringRecord, atl_start: usize) -> V
     prefs_headers_fixed
 }
 
+/// Read the candidates from a stream.
 pub fn read_candidates<T>(candsfile: T) -> Result<CandsData>
 where
     T: Read,
@@ -489,6 +489,7 @@ impl FilteredCandidate {
     }
 }
 
+/// Return a list of candidates matching some filter.
 pub fn filter_candidates(
     candsdict: &CandsData,
     state: &StateAb,
@@ -639,21 +640,27 @@ pub fn input(prompt: &str) -> std::io::Result<String> {
 }
 
 /// Fetch a URL in a blocking fashion despite async interface of `ehttp`.
-/// Uses a sync::mpsc::channel under the hood.
+/// Uses a `sync::mpsc::channel` under the hood.
 pub fn fetch_blocking(url: impl ToString) -> Result<ehttp::Response, String> {
     let (sender, receiver) = std::sync::mpsc::channel();
     let req = ehttp::Request::get(url);
     ehttp::fetch(req, move |r| sender.send(r).unwrap());
-    return receiver.recv().unwrap();
+    receiver.recv().unwrap()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn test_conversions() {
+    fn test_ballot_number_conversions() {
         assert_eq!("AE", 31.to_ticket());
         assert_eq!(31, "AE".to_number());
         assert_eq!("123 thousand", 123000.pretty_number());
+    }
+    #[test]
+    fn test_state_ab_conversions() {
+        assert_eq!("ACT", StateAb::ACT.to_string());
+        assert_eq!(StateAb::NSW, StateAb::from("nsw"));
+        assert!(StateAb::from_str("this is not a state").is_err());
     }
 }

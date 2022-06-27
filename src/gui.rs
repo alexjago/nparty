@@ -16,7 +16,7 @@ mod term;
 mod upgrades;
 mod utils;
 
-/// Sets up the application
+/// Run the GUI.
 fn main() -> anyhow::Result<()> {
     let mut settings = Settings::default();
     settings.custom_font = Some(std::borrow::Cow::Borrowed(include_bytes!(

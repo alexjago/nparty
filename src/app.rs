@@ -1,14 +1,13 @@
 //! The main app logic: argument structs and most top-level functions
 
 use std::collections::BTreeMap;
-use std::fs::{metadata, File};
+use std::fs::File;
 use std::path::PathBuf;
-use std::time::SystemTime;
 
 use crate::config::*;
 use crate::utils::ToStateAb;
 use crate::*;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context};
 use clap::{AppSettings, ArgEnum, Parser, Subcommand, ValueHint};
 
 #[derive(Parser, Debug)]
@@ -16,6 +15,7 @@ use clap::{AppSettings, ArgEnum, Parser, Subcommand, ValueHint};
 #[clap(global_setting(AppSettings::PropagateVersion))]
 #[clap(global_setting(AppSettings::UseLongFormatForHelpSubcommand))]
 pub struct Cli {
+    // We have an enum inside the struct to allow for global options here...
     #[clap(subcommand)]
     pub command: CliCommands,
 }
@@ -57,7 +57,7 @@ pub enum CliData {
     },
 }
 
-/// Print an example configuration for the specified year, if available
+/// Print an example configuration for the specified year, if available (TOML format)
 #[derive(Parser, Debug, PartialEq)]
 #[allow(non_snake_case)]
 pub struct CliExample {
@@ -68,12 +68,11 @@ pub struct CliExample {
 /// Upgrade older electoral and geographic data files to be compatible with more recent ones.
 #[derive(Parser, Debug, PartialEq)]
 pub enum CliUpgrade {
-    /// upgrade a preference file to the latest format (e.g. 2016 to 2019)
     Prefs(CliUpgradePrefs),
-    /// convert an SA1s-Districts file from old SA1s to new (e.g. 2011 to 2016 ASGS)
     Sa1s(CliUpgradeSa1s),
 }
 
+/// Upgrade a preference file to the latest format (e.g. 2016 to 2019)
 #[derive(Parser, Debug, PartialEq)]
 pub struct CliUpgradePrefs {
     /// suffix for when filenames would collide
@@ -97,6 +96,7 @@ pub struct CliUpgradePrefs {
     pub output: PathBuf,
 }
 
+/// Convert an SA1s-Districts file from old SA1s to new (e.g. 2011 to 2016 ASGS)
 #[derive(Parser, Debug, PartialEq)]
 pub struct CliUpgradeSa1s {
     /// Indicate lack of header row for input file
@@ -202,10 +202,7 @@ pub enum CliRunPhase {
     Combine,
 }
 
-#[derive(Parser, Debug, PartialEq)]
-pub struct CliRunCombine {}
-
-// Do the heavy lifting of nparty run so as to keep things clean
+/// Performs the `run` subcommand.
 pub fn run(args: CliRun) -> anyhow::Result<()> {
     let cfgpath = args.configfile;
 
@@ -276,98 +273,7 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn do_upgrade_prefs(args: CliUpgradePrefs) -> anyhow::Result<()> {
-    let candspath = args.candidates;
-    let inpath = args.input;
-    let outpath = args.output;
-    let suffix = args.suffix;
-    let filter = args.filter;
-
-    let mut paths: Vec<(PathBuf, PathBuf)> = Vec::new();
-
-    if inpath.is_dir() {
-        if !outpath.is_dir() {
-            bail!("Input path is a directory but output path is not.");
-        } else {
-            let mut query: String = inpath
-                .to_str()
-                .map(String::from)
-                .context("Path conversion error")?;
-            query.push_str(&filter);
-
-            let ips: Vec<PathBuf> = glob::glob(&query)?.filter_map(Result::ok).collect();
-
-            if inpath == outpath {
-                // need to upgrade in place
-                // i.e. apply suffix to opaths
-                for ip in ips {
-                    let mut op_fstem = ip.file_stem().context("No file name")?.to_os_string();
-                    op_fstem.push(&suffix);
-                    let ext = ip.extension().context("No file extension")?;
-                    let op = ip.clone().with_file_name(op_fstem).with_extension(ext);
-                    paths.push((ip, op));
-                }
-            } else {
-                // don't need to upgrade in place
-                for ip in ips {
-                    let op = outpath.join(ip.file_name().context("No file name")?);
-                    paths.push((ip, op));
-                }
-            }
-        }
-    } else {
-        let ip = inpath.clone();
-        if outpath.is_dir() {
-            paths.push((
-                ip,
-                outpath.join(&inpath.file_name().context("no file name")?),
-            ));
-        } else {
-            paths.push((ip, outpath));
-        }
-    }
-
-    for (ipath, opath) in &paths {
-        let candsdata = utils::read_candidates(
-            File::open(&candspath).context("Couldn't open candidates file")?,
-        )?;
-        let divstates = upgrades::divstate_creator(
-            File::open(&candspath).context("Couldn't open candidates file")?,
-        );
-
-        // eprintln!("ipath: {} \t opath: {}", ipath.display(), opath.display());
-
-        let era = upgrades::era_sniff(&mut utils::open_csvz_from_path(ipath)?)
-            .context("Error determining era of input.")?;
-
-        if era == 2016 {
-            // Test if upgrade already exists
-            let im = metadata(&ipath).context("In-path doesn't seem to exist?")?;
-            let om = metadata(&opath);
-            let otime = om.as_ref().map_or(SystemTime::UNIX_EPOCH, |x| {
-                x.modified().unwrap_or(SystemTime::UNIX_EPOCH)
-            });
-            let itime = im.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-            if otime > itime {
-                // todo: consider testing it's the correct era
-                eprintln!("Upgrade already exists; skipping");
-                continue;
-            } else {
-                eprintln!("Upgrading...");
-                upgrades::upgrade_prefs_16_19(
-                    &mut utils::open_csvz_from_path(ipath)?,
-                    &mut utils::get_zip_writer_to_path(opath, "csv")?,
-                    &candsdata,
-                    &divstates,
-                );
-            }
-        } else {
-            eprintln!("No upgrade available - is it already the latest?");
-        }
-    }
-    Ok(())
-}
-
+/// Performs the `configure` subcommand.
 pub fn do_configure(args: CliConfigure) -> anyhow::Result<()> {
     // requireds
     let candspath = args.candidates;
@@ -412,6 +318,7 @@ pub fn do_configure(args: CliConfigure) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Prints an example configuration TOML to standard output.
 pub fn print_example_config(args: CliExample) -> anyhow::Result<()> {
     match args.year.as_ref() {
         "2016" => println!("{}", include_str!("../example_config_2016.toml")),
@@ -424,22 +331,24 @@ pub fn print_example_config(args: CliExample) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Prints README.md to standard output
 pub fn print_readme() -> anyhow::Result<()> {
     let readme = include_str!("../README.md");
     println!("{}", readme);
     Ok(())
 }
 
+/// Prints the license details.
 /// Before releasing, run
-///     cargo-license --avoid-build-deps --avoid-dev-deps -a -t > src/dependencies.txt
+///     cargo-license --avoid-build-deps --avoid-dev-deps -a -t > src/dependencies.tsv
 pub fn print_license() -> anyhow::Result<()> {
     println!(include_str!("license-preface.txt"));
-    println!("\nDependencies of nparty are listed as follows:\n");
-    println!(include_str!("dependencies.txt"));
+    println!("\nnparty integrates code (dependencies) from a number of other authors. \nDetails of these dependencies are listed below, including the authors, licenses, and links to source code:\n");
+    println!(include_str!("dependencies.tsv"));
     Ok(())
 }
 
-/// Runs the command
+/// Does the top-level command.
 pub fn actual(m: Cli) -> anyhow::Result<()> {
     use CliCommands::*;
     match m.command {
@@ -456,7 +365,7 @@ pub fn actual(m: Cli) -> anyhow::Result<()> {
         Readme => print_readme()?,
         Run(sm) => run(sm)?,
         Upgrade(sm) => match sm {
-            CliUpgrade::Prefs(ssm) => do_upgrade_prefs(ssm)?,
+            CliUpgrade::Prefs(ssm) => upgrades::do_upgrade_prefs(ssm)?,
             CliUpgrade::Sa1s(ssm) => upgrades::do_upgrade_sa1s(ssm)?,
         },
     }

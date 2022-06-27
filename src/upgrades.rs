@@ -1,16 +1,21 @@
 //! Ballot-file format upgrades and SA1 geography upgrades.
+use anyhow::{bail, Context};
+
 use crate::app::CliUpgradeSa1s;
 use crate::utils::*;
 use std::collections::{BTreeMap, HashMap};
+use std::fs::{metadata, File};
 use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::time::SystemTime;
 
 // The candidate file format is sufficiently unchanged
 // that it doesn't appear to need upgrading.
-// We can simply read it with utils::read_candidates()
+// We can simply read it with read_candidates()
 // However, what that doesn't give us is a mapping from Divisions to States
 // We kinda need this for the main event, as anything else would be fragile.
 // More problematically, csv::from_reader(rdr) takes ownership of rdr
-// so we can only do that once, and I don't want to modify utils::read_candidates()
+// so we can only do that once, and I don't want to modify read_candidates()
 // or duplicate its code
 // So instead we'll read another file with similar information
 
@@ -160,6 +165,7 @@ pub fn era_sniff(infile: &mut dyn Read) -> std::io::Result<usize> {
     Ok(rez)
 }
 
+/// Performs the `upgrade sa1s` subcommand.
 pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> anyhow::Result<()> {
     // 1. Read the correspondence file into a map
 
@@ -252,6 +258,97 @@ pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> anyhow::Result<()> {
             })?;
         }
         outf.flush()?;
+    }
+    Ok(())
+}
+
+/// Performs the `upgrade prefs` subcommand.
+pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> anyhow::Result<()> {
+    let candspath = args.candidates;
+    let inpath = args.input;
+    let outpath = args.output;
+    let suffix = args.suffix;
+    let filter = args.filter;
+
+    let mut paths: Vec<(PathBuf, PathBuf)> = Vec::new();
+
+    if inpath.is_dir() {
+        if !outpath.is_dir() {
+            bail!("Input path is a directory but output path is not.");
+        } else {
+            let mut query: String = inpath
+                .to_str()
+                .map(String::from)
+                .context("Path conversion error")?;
+            query.push_str(&filter);
+
+            let ips: Vec<PathBuf> = glob::glob(&query)?.filter_map(Result::ok).collect();
+
+            if inpath == outpath {
+                // need to upgrade in place
+                // i.e. apply suffix to opaths
+                for ip in ips {
+                    let mut op_fstem = ip.file_stem().context("No file name")?.to_os_string();
+                    op_fstem.push(&suffix);
+                    let ext = ip.extension().context("No file extension")?;
+                    let op = ip.clone().with_file_name(op_fstem).with_extension(ext);
+                    paths.push((ip, op));
+                }
+            } else {
+                // don't need to upgrade in place
+                for ip in ips {
+                    let op = outpath.join(ip.file_name().context("No file name")?);
+                    paths.push((ip, op));
+                }
+            }
+        }
+    } else {
+        let ip = inpath.clone();
+        if outpath.is_dir() {
+            paths.push((
+                ip,
+                outpath.join(&inpath.file_name().context("no file name")?),
+            ));
+        } else {
+            paths.push((ip, outpath));
+        }
+    }
+
+    for (ipath, opath) in &paths {
+        let candsdata =
+            read_candidates(File::open(&candspath).context("Couldn't open candidates file")?)?;
+        let divstates =
+            divstate_creator(File::open(&candspath).context("Couldn't open candidates file")?);
+
+        // eprintln!("ipath: {} \t opath: {}", ipath.display(), opath.display());
+
+        let era = era_sniff(&mut open_csvz_from_path(ipath)?)
+            .context("Error determining era of input.")?;
+
+        if era == 2016 {
+            // Test if upgrade already exists
+            let im = metadata(&ipath).context("In-path doesn't seem to exist?")?;
+            let om = metadata(&opath);
+            let otime = om.as_ref().map_or(SystemTime::UNIX_EPOCH, |x| {
+                x.modified().unwrap_or(SystemTime::UNIX_EPOCH)
+            });
+            let itime = im.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+            if otime > itime {
+                // todo: consider testing it's the correct era
+                eprintln!("Upgrade already exists; skipping");
+                continue;
+            } else {
+                eprintln!("Upgrading...");
+                upgrade_prefs_16_19(
+                    &mut open_csvz_from_path(ipath)?,
+                    &mut get_zip_writer_to_path(opath, "csv")?,
+                    &candsdata,
+                    &divstates,
+                );
+            }
+        } else {
+            eprintln!("No upgrade available - is it already the latest?");
+        }
     }
     Ok(())
 }

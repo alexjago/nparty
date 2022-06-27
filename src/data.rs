@@ -1,3 +1,5 @@
+//! Functions to download preference data or print corresponding URLs.
+
 use std::collections::BTreeMap;
 use std::fs::{create_dir_all, write, File};
 use std::io::Write;
@@ -9,6 +11,7 @@ use crate::utils::fetch_blocking;
 
 // const STATES: [&str; 8] = ["ACT", "NT", "NSW", "QLD", "SA", "TAS", "VIC", "WA"];
 
+/// The details of each election
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct DlItems {
@@ -18,14 +21,17 @@ pub struct DlItems {
     political_parties: String,
     sa1s_pps: String,
     candidates: String,
+    /// state/territory : URL
     formal_prefs: BTreeMap<String, String>,
 }
 
+/// Returns `data_files/downloads.ron` as a BTreeMap
 pub fn make_data() -> BTreeMap<String, DlItems> {
     ron::de::from_str::<BTreeMap<String, DlItems>>(include_str!("data_files/downloads.ron"))
         .unwrap()
 }
 
+/// Output a formatted HTML page detailing the downloads
 fn make_html(texts: &BTreeMap<String, DlItems>) -> String {
     let template_html: &str = include_str!("data_files/data_template.html");
     let template_list: &str = include_str!("data_files/list_template.html");
@@ -66,6 +72,7 @@ fn make_html(texts: &BTreeMap<String, DlItems>) -> String {
     String::from(template_html).replace("CONTENT", &content)
 }
 
+/// Print the HTML of the download links
 pub fn examine_html(filey: &Path) {
     let sacred_texts = make_data();
     let mut output = File::create(filey).expect("Error creating file");
@@ -74,6 +81,7 @@ pub fn examine_html(filey: &Path) {
         .expect("Error writing file");
 }
 
+/// Print the download links as plain text
 pub fn examine_txt() {
     let sacred_texts = make_data();
     // eprintln!("{:#?}", sacred_texts);
@@ -88,6 +96,7 @@ pub fn examine_txt() {
     }
 }
 
+/// Download all the links to `dldir`.
 pub fn download(dldir: &Path) -> anyhow::Result<()> {
     let sacred_texts = make_data();
 
