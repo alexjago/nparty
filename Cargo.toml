@@ -6,6 +6,10 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis."
 default-run = "nparty"
+rust-version = "1.62"
+repository = "https://github.com/alexjago/nparty"
+keywords = ["senate", "party-preferred", "psephology"]
+categories = ["cli", "gui"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

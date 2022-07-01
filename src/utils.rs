@@ -1,6 +1,5 @@
 //! Assorted utility structs and functions.
 
-#![allow(clippy::upper_case_acronyms)]
 use anyhow::{Context, Result};
 use csv::StringRecord;
 use inflector::cases::titlecase::to_title_case;
@@ -50,7 +49,7 @@ impl ToTicket for BallotNumber {
             let num = self - 1;
             let remainder = num % 26;
             let shift = (num - remainder) / 26;
-            Self::to_ticket(shift) + &char::from_u32(remainder + 'A' as u32).unwrap().to_string()
+            Self::to_ticket(shift) + &char::from_u32(remainder + 'A' as Self).unwrap().to_string()
         }
     }
 }
@@ -81,7 +80,7 @@ impl ToBallotNumber for &str {
 
 // converts pretty_number
 
-/// Display BallotNumbers to a couple of significant figures and a relevant name.
+/// Display `BallotNumbers` to a couple of significant figures and a relevant name.
 pub trait PrettifyNumber {
     fn pretty_number(self) -> String;
 }
@@ -89,14 +88,14 @@ pub trait PrettifyNumber {
 impl PrettifyNumber for BallotNumber {
     fn pretty_number(self) -> String {
         const SCALE: [(BallotNumber, &str); 3] = [
-            (1000000000, "billion"),
-            (1000000, "million"),
-            (1000, "thousand"),
+            (1_000_000_000, "billion"),
+            (1_000_000, "million"),
+            (1_000, "thousand"),
         ];
         if self < SCALE[SCALE.len() - 1].0 {
             self.to_string()
         } else {
-            for s in SCALE.iter() {
+            for s in &SCALE {
                 if self >= s.0 {
                     return format!("{} {}", self / s.0, s.1);
                 }
@@ -116,6 +115,8 @@ impl PrettifyNumber for BallotNumber {
 // we might need several things
 
 #[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Copy, Clone)]
+#[allow(clippy::use_self)] // False positive: There's a bug here related to derives
+#[allow(clippy::upper_case_acronyms)] // It's usual for these to be capitalised and there aren't contiguity issues
 pub enum StateAb {
     ACT,
     NSW,
@@ -144,14 +145,14 @@ impl FromStr for StateAb {
     type Err = &'static str;
     fn from_str(item: &str) -> std::result::Result<Self, Self::Err> {
         match item.to_uppercase().as_str() {
-            "ACT" => Ok(StateAb::ACT),
-            "NSW" => Ok(StateAb::NSW),
-            "NT" => Ok(StateAb::NT),
-            "QLD" => Ok(StateAb::QLD),
-            "SA" => Ok(StateAb::SA),
-            "TAS" => Ok(StateAb::TAS),
-            "VIC" => Ok(StateAb::VIC),
-            "WA" => Ok(StateAb::WA),
+            "ACT" => Ok(Self::ACT),
+            "NSW" => Ok(Self::NSW),
+            "NT" => Ok(Self::NT),
+            "QLD" => Ok(Self::QLD),
+            "SA" => Ok(Self::SA),
+            "TAS" => Ok(Self::TAS),
+            "VIC" => Ok(Self::VIC),
+            "WA" => Ok(Self::WA),
             _ => Err("Jurisdiction does not exist"),
         }
     }
@@ -231,7 +232,7 @@ struct CandidateRecord {
 
 /// If a 2022 header is missing quotes around some values they'll be incorrectly split.
 /// This unsplits them in a semi-intelligent fashion.
-pub fn fix_prefs_headers(prefs_headers_raw: StringRecord, atl_start: usize) -> Vec<String> {
+pub fn fix_prefs_headers(prefs_headers_raw: &StringRecord, atl_start: usize) -> Vec<String> {
     let mut prefs_headers_fixed: Vec<String> = Vec::with_capacity(prefs_headers_raw.len());
 
     // opening six are fine...
@@ -342,7 +343,7 @@ where
 
     // Now iterate by state to fill in the `ballot_number`s
 
-    for (_, state) in bigdict.iter_mut() {
+    for state in bigdict.values_mut() {
         let ticket_count = state.len();
         let mut ballot_number = (ticket_count - 1) as BallotNumber;
 
@@ -394,7 +395,7 @@ pub type PartyData = HashMap<String, String>;
 
 /// Reads party abbreviations from the relevant file...
 /// -> {(party name on ballot | party abbreviation) : party abbreviation}
-pub fn read_party_abbrvs<T>(partyfile: T) -> Result<PartyData>
+pub fn read_party_abbrvs<T>(partyfile: T) -> PartyData
 where
     T: Read,
 {
@@ -413,7 +414,7 @@ where
         bigdict.insert(pr.party_nm, to_title_case(&pr.party_ab));
     }
 
-    Ok(bigdict)
+    bigdict
 }
 
 // next up is `filter_candidates`
@@ -492,7 +493,7 @@ impl FilteredCandidate {
 /// Return a list of candidates matching some filter.
 pub fn filter_candidates(
     candsdict: &CandsData,
-    state: &StateAb,
+    state: StateAb,
     filter: &str,
 ) -> Vec<FilteredCandidate> {
     let mut data = Vec::new();
@@ -500,7 +501,7 @@ pub fn filter_candidates(
         .case_insensitive(true)
         .build()
         .unwrap();
-    for (tk, cands) in candsdict.get(state).unwrap().iter() {
+    for (tk, cands) in candsdict.get(&state).unwrap().iter() {
         for (_balnum, cv) in cands.iter() {
             // OK, field by field
             let mut cands_matches = [false; 5];
@@ -513,9 +514,9 @@ pub fn filter_candidates(
             let any_match: bool = cands_matches.iter().fold(false, |acc, x| (acc | x));
 
             let disregard_if_ticket_literal =
-                candsdict.get(state).unwrap().contains_key(filter) & (filter != tk);
+                candsdict.get(&state).unwrap().contains_key(filter) & (filter != tk);
             // disregard filters that exactly specify OTHER ticket literals
-            if any_match & !disregard_if_ticket_literal {
+            if any_match && !disregard_if_ticket_literal {
                 data.push(FilteredCandidate {
                     filter: filt.clone(),
                     surname: cv.surname.clone(),
@@ -533,25 +534,23 @@ pub fn filter_candidates(
     data
 }
 
-trait ReadSeek: Read + Seek {}
-
 /// Opens a file, possibly zipped, for reading.
 /// If the zipfile contains more than one file, the first will be returned.
 /// Performance note: has to unzip and return the entire file.
-pub fn open_csvz<T: 'static>(mut infile: T) -> Result<Box<dyn Read>>
-where
-    T: Read + Seek,
-{
-    if !(is_zip(&mut infile)?) {
-        Ok(Box::new(infile))
-    } else {
+pub fn open_csvz<T: 'static + Read + Seek>(mut infile: T) -> Result<Box<dyn Read>> {
+    if is_zip(&mut infile)? {
         let mut zippah = zip::ZipArchive::new(infile).expect("error establishing the ZIP");
         let mut zippy = zippah.by_index(0).expect("no file in ZIP");
         // sigh. We're going to need to just go ahead and read the entire thing into memory here
-        let zs = zippy.size() as usize;
+        let zs: usize = zippy
+            .size()
+            .try_into()
+            .with_context(|| format!("I don't support files greater than {} :(", usize::MAX))?;
         let mut bigbuf: Vec<u8> = Vec::with_capacity(zs);
         zippy.read_to_end(&mut bigbuf).expect("Error reading ZIP");
         Ok(Box::new(Cursor::new(bigbuf)))
+    } else {
+        Ok(Box::new(infile))
     }
 }
 
@@ -567,7 +566,7 @@ pub fn open_csvz_from_path(inpath: &path::Path) -> Result<Box<dyn Read>> {
                 inpath.display()
             )
         });
-        if ext == OsStr::new("csv") {
+        if ext == OsStr::new("zip") {
             let newpath = inpath.with_extension("zip");
             open_csvz(File::open(newpath)?)?
         } else if ext == OsStr::new("csv") {

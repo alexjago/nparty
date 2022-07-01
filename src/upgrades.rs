@@ -2,7 +2,9 @@
 use anyhow::{bail, Context};
 
 use crate::app::CliUpgradeSa1s;
-use crate::utils::*;
+use crate::utils::{
+    get_zip_writer_to_path, open_csvz_from_path, read_candidates, CandsData, StateAb, ToTicket,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{metadata, File};
 use std::io::{Read, Write};
@@ -77,7 +79,8 @@ pub fn upgrade_prefs_16_19(
         if old.ElectorateNm.starts_with("---") {
             // skip random divider line
             continue;
-        } else if progress == 0 {
+        }
+        if progress == 0 {
             // on startup we need to write the headers
             let mut header = vec![
                 String::from("State"),
@@ -91,22 +94,22 @@ pub fn upgrade_prefs_16_19(
             state = divstates[&old.ElectorateNm];
             statestring = state.to_string();
 
-            let mut atls: Vec<String> = Vec::new();
-            let mut btls: Vec<String> = Vec::new();
+            let mut aboves: Vec<String> = Vec::new();
+            let mut belows: Vec<String> = Vec::new();
 
             // and figure out who our candidates are
-            // we have a CandsData, and thence a
+            // we have a CandsData, and thence a ...
             let ballot_paper = &candsdata[&state];
             for tnum in 1..ballot_paper.len() {
                 let tnum = tnum as u32;
                 let tstring = tnum.to_ticket();
                 let ticket = &ballot_paper[&tstring];
-                atls.push(format!("{}:{}", tstring, ticket[&0_u32].party));
-                for cnum in 1..ticket.len() {
-                    let cnum = cnum as u32;
-                    btls.push(format!(
+                aboves.push(format!("{}:{}", tstring, ticket[&0_u32].party));
+                for cand_num in 1..ticket.len() {
+                    let cand_num = cand_num as u32;
+                    belows.push(format!(
                         "{}:{} {}",
-                        tstring, ticket[&cnum].surname, ticket[&cnum].ballot_given_nm
+                        tstring, ticket[&cand_num].surname, ticket[&cand_num].ballot_given_nm
                     ));
                 }
             }
@@ -114,17 +117,17 @@ pub fn upgrade_prefs_16_19(
             {
                 // handle UGs
                 let ticket = &ballot_paper["UG"];
-                for cnum in 1..=ticket.len() {
-                    let cnum = cnum as u32;
-                    btls.push(format!(
+                for cand_num in 1..=ticket.len() {
+                    let cand_num = cand_num as u32;
+                    belows.push(format!(
                         "UG:{} {}",
-                        ticket[&cnum].surname, ticket[&cnum].ballot_given_nm
+                        ticket[&cand_num].surname, ticket[&cand_num].ballot_given_nm
                     ));
                 }
             }
 
-            header.append(&mut atls);
-            header.append(&mut btls);
+            header.append(&mut aboves);
+            header.append(&mut belows);
 
             outwtr.write_record(header).unwrap();
         }
@@ -145,7 +148,7 @@ pub fn upgrade_prefs_16_19(
 
         progress += 1;
 
-        if progress % 100000 == 0 {
+        if progress % 100_000 == 0 {
             eprintln!("{}Upgrade progress... {}", crate::term::TTYJUMP, progress);
         }
     }
@@ -153,14 +156,18 @@ pub fn upgrade_prefs_16_19(
 
 /// Sniff the era of a CSV stream
 /// It's a stream, so be sure it's the start
-pub fn era_sniff(infile: &mut dyn Read) -> std::io::Result<usize> {
+pub fn era_sniff(infile: &mut dyn Read) -> anyhow::Result<usize> {
     let mut inrdr = csv::Reader::from_reader(infile);
     let hdr: Vec<&str> = inrdr.headers()?.into_iter().collect();
-    let rez = match hdr[0..6] {
+
+    let rez = match hdr.get(0..6).context("Invalid headers.")? {
         ["ElectorateNm", "VoteCollectionPointNm", "VoteCollectionPointId", "BatchNo", "PaperNo", "Preferences"] => {
             2016
         }
-        _ => 2019,
+        ["State", "Division", "Vote Collection Point Name", "Vote Collection Point ID", "Batch No", "Paper No"] => {
+            2019
+        }
+        _ => bail!("Invalid headers."),
     };
     Ok(rez)
 }
@@ -273,9 +280,7 @@ pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> anyhow::Result<()>
     let mut paths: Vec<(PathBuf, PathBuf)> = Vec::new();
 
     if inpath.is_dir() {
-        if !outpath.is_dir() {
-            bail!("Input path is a directory but output path is not.");
-        } else {
+        if outpath.is_dir() {
             let mut query: String = inpath
                 .to_str()
                 .map(String::from)
@@ -301,6 +306,8 @@ pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> anyhow::Result<()>
                     paths.push((ip, op));
                 }
             }
+        } else {
+            bail!("Input path is a directory but output path is not.");
         }
     } else {
         let ip = inpath.clone();
@@ -329,23 +336,22 @@ pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> anyhow::Result<()>
             // Test if upgrade already exists
             let im = metadata(&ipath).context("In-path doesn't seem to exist?")?;
             let om = metadata(&opath);
-            let otime = om.as_ref().map_or(SystemTime::UNIX_EPOCH, |x| {
+            let out_time = om.as_ref().map_or(SystemTime::UNIX_EPOCH, |x| {
                 x.modified().unwrap_or(SystemTime::UNIX_EPOCH)
             });
-            let itime = im.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-            if otime > itime {
+            let in_time = im.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+            if out_time > in_time {
                 // todo: consider testing it's the correct era
                 eprintln!("Upgrade already exists; skipping");
                 continue;
-            } else {
-                eprintln!("Upgrading...");
-                upgrade_prefs_16_19(
-                    &mut open_csvz_from_path(ipath)?,
-                    &mut get_zip_writer_to_path(opath, "csv")?,
-                    &candsdata,
-                    &divstates,
-                );
             }
+            eprintln!("Upgrading...");
+            upgrade_prefs_16_19(
+                &mut open_csvz_from_path(ipath)?,
+                &mut get_zip_writer_to_path(opath, "csv")?,
+                &candsdata,
+                &divstates,
+            );
         } else {
             eprintln!("No upgrade available - is it already the latest?");
         }

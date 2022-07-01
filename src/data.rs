@@ -5,6 +5,8 @@ use std::fs::{create_dir_all, write, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use anyhow::Context;
+
 use crate::utils::fetch_blocking;
 
 // TODO: calamine for conversions...
@@ -25,42 +27,36 @@ pub struct DlItems {
     formal_prefs: BTreeMap<String, String>,
 }
 
-/// Returns `data_files/downloads.ron` as a BTreeMap
-pub fn make_data() -> BTreeMap<String, DlItems> {
+/// Returns `data_files/downloads.ron` as a `BTreeMap`
+pub fn make_map() -> BTreeMap<String, DlItems> {
     ron::de::from_str::<BTreeMap<String, DlItems>>(include_str!("data_files/downloads.ron"))
         .unwrap()
 }
 
 /// Output a formatted HTML page detailing the downloads
 fn make_html(texts: &BTreeMap<String, DlItems>) -> String {
+    use std::fmt::Write as _; // import without risk of name clashing
     let template_html: &str = include_str!("data_files/data_template.html");
     let template_list: &str = include_str!("data_files/list_template.html");
 
     let mut content = String::new();
 
     for (year, item) in texts {
-        let mut listy = String::new();
-        listy.push_str(&format!(
-            "<li><a href=\"{}\">{}</a></li>\n",
-            item.polling_places, "Polling Places (nation-wide)"
-        ));
-        listy.push_str(&format!(
-            "<li><a href=\"{}\">{}</a></li>\n",
-            item.political_parties, "Votes by SA1 (nation-wide)"
-        ));
-        listy.push_str(&format!(
-            "<li><a href=\"{}\">{}</a></li>\n",
-            item.sa1s_pps, "Candidates (nation-wide)"
-        ));
-        listy.push_str(&format!(
-            "<li><a href=\"{}\">{}</a></li>\n",
-            item.candidates, "Political Parties (nation-wide)"
-        ));
+        let mut listy = format!(
+            "<li><a href=\"{}\">Polling Places (nation-wide)</a></li>\n\
+            <li><a href=\"{}\">Votes by Polling Place by SA1 (nation-wide)</a></li>\n\
+            <li><a href=\"{}\">Candidates (nation-wide)</a></li>\n\
+            <li><a href=\"{}\">Political Parties (nation-wide)</a></li>\n",
+            item.polling_places, item.sa1s_pps, item.candidates, item.political_parties
+        );
+
         for (state, url) in &item.formal_prefs {
-            listy.push_str(&format!(
-                "<li><a href=\"{}\">Formal Preferences for {}</a></li>\n",
+            writeln!(
+                listy,
+                "<li><a href=\"{}\">Formal Preferences for {}</a></li>",
                 url, state
-            ));
+            )
+            .unwrap();
         }
         content.push_str(
             &template_list
@@ -73,9 +69,9 @@ fn make_html(texts: &BTreeMap<String, DlItems>) -> String {
 }
 
 /// Print the HTML of the download links
-pub fn examine_html(filey: &Path) {
-    let sacred_texts = make_data();
-    let mut output = File::create(filey).expect("Error creating file");
+pub fn examine_html(path: &Path) {
+    let sacred_texts = make_map();
+    let mut output = File::create(path).expect("Error creating file");
     output
         .write_all(make_html(&sacred_texts).as_bytes())
         .expect("Error writing file");
@@ -83,12 +79,12 @@ pub fn examine_html(filey: &Path) {
 
 /// Print the download links as plain text
 pub fn examine_txt() {
-    let sacred_texts = make_data();
+    let sacred_texts = make_map();
     // eprintln!("{:#?}", sacred_texts);
     for (_, item) in sacred_texts {
         println!(
             "{}\n{}\n{}\n{}",
-            item.polling_places, item.political_parties, item.sa1s_pps, item.candidates
+            item.polling_places, item.sa1s_pps, item.candidates, item.political_parties
         );
         for (_, url) in item.formal_prefs {
             println!("{}", url);
@@ -98,14 +94,14 @@ pub fn examine_txt() {
 
 /// Download all the links to `dldir`.
 pub fn download(dldir: &Path) -> anyhow::Result<()> {
-    let sacred_texts = make_data();
+    let sacred_texts = make_map();
 
     let mut dldir = dldir;
 
-    if !dldir.is_file() {
-        create_dir_all(dldir).unwrap();
-    } else {
+    if dldir.is_file() {
         dldir = dldir.parent().unwrap();
+    } else {
+        create_dir_all(dldir).unwrap();
     }
 
     let mut skips = 0;
@@ -131,10 +127,12 @@ pub fn download(dldir: &Path) -> anyhow::Result<()> {
                 // globfn omitted for now
                 if !dlto.is_file() {
                     eprintln!("Downloading: {}", &dlto.display());
-
+                    // URLs might be incorrectly specified (or not available yet) and are skippable individually
+                    // but if we can't write one file then chances are we can't write any
                     match fetch_blocking(&link) {
-                        Ok(response) => write(&dlto, response.bytes)
-                            .unwrap_or_else(|e| eprintln!("Error writing file: {:?}", e)),
+                        Ok(response) => {
+                            write(&dlto, response.bytes).context("Error writing file")?;
+                        }
                         Err(e) => eprintln!(
                             "Error downloading {:#?}:\n{}",
                             &aspath.file_name().unwrap(),

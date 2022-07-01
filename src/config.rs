@@ -1,5 +1,11 @@
 //! Generation and loading of configuration files.
 
+use crate::booths::Parties;
+use crate::term::{BOLD, END};
+use crate::utils::{
+    filter_candidates, input, open_csvz_from_path, read_party_abbrvs, CandsData, FilteredCandidate,
+    StateAb,
+};
 use anyhow::{bail, Context, Result};
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
@@ -8,14 +14,7 @@ use std::fs::read_to_string;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tabwriter::TabWriter;
-use toml_edit::*;
-
-use crate::booths::Parties;
-use crate::term::{BOLD, END};
-use crate::utils::{
-    filter_candidates, input, open_csvz_from_path, read_party_abbrvs, CandsData, FilteredCandidate,
-    StateAb,
-};
+use toml_edit::{ser, Document, Item, TableLike};
 
 // TODO: long term goals to get back to Python equivalent functionality
 // We will support a TOML setup that's otherwise consistent with Python's ConfigParser's
@@ -86,7 +85,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
     // We pop the contents of [DEFAULT] into a HashMap to avoid existence failure
     let mut defaults: HashMap<&str, &Item> = HashMap::new();
     if cfg.contains_key("DEFAULT") {
-        for (key, item) in cfg.get("DEFAULT").unwrap().as_table().unwrap().into_iter() {
+        for (key, item) in cfg.get("DEFAULT").unwrap().as_table().unwrap() {
             defaults.insert(key, item);
         }
     }
@@ -112,6 +111,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
         // NAME always known from scenario directly
         let name = String::from(scenario_key);
 
+        #[allow(clippy::items_after_statements)]
         /// We are able to abstract out much of the logic into this...
         fn get_attribute<'a, T, F>(
             key: &'a str,
@@ -125,7 +125,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
             scenario
                 .get(key)
                 .or_else(|| defaults.get(key).copied())
-                .and_then(|x| x.as_str())
+                .and_then(toml_edit::Item::as_str)
                 .map(conversion_fn)
         }
 
@@ -242,9 +242,9 @@ pub fn list_scenarios(cfgpath: &Path) -> Result<()> {
         tw.flush()?;
         let output = String::from_utf8(tw.into_inner()?)?;
         let firstnewline = output.find('\n').unwrap();
-        let hline = &output[0..firstnewline];
-        let rline = &output[firstnewline..output.len()];
-        println!("{}{}{}{}", BOLD, hline, END, rline);
+        let head = &output[0..firstnewline];
+        let body = &output[firstnewline..output.len()];
+        println!("{}{}{}{}", BOLD, head, END, body);
     } else {
         println!("{}", headers);
         for i in output {
@@ -279,26 +279,24 @@ where
     let mut maybe;
     if known.is_some() {
         return known.clone();
-    } else if existing.is_some() {
+    }
+    if existing.is_some() {
         let ex = existing?.clone();
         let maybe = input(&format!("Enter {} [default: {:?}]: ", name, ex)).ok()?;
         if maybe.is_empty() {
             return Some(ex);
-        } else {
-            return T::from_str(&maybe).ok();
         }
-    } else {
-        loop {
-            maybe = input(&format!("Enter {}: ", name)).ok()?;
-            if maybe.is_empty() {
-                if skippable {
-                    return None;
-                }
-                continue;
-            } else {
-                break;
+        return T::from_str(&maybe).ok();
+    }
+    loop {
+        maybe = input(&format!("Enter {}: ", name)).ok()?;
+        if maybe.is_empty() {
+            if skippable {
+                return None;
             }
+            continue;
         }
+        break;
     }
     T::from_str(&maybe).ok()
 }
@@ -378,7 +376,7 @@ pub fn cli_scenarios(
         )
         .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
         let party_details_file = open_csvz_from_path(&party_details)?;
-        let party_abbrvs = read_party_abbrvs(party_details_file)?;
+        let party_abbrvs = read_party_abbrvs(party_details_file);
 
         let state = get_option_cli(
             "state or territory",
@@ -422,7 +420,7 @@ pub fn cli_scenarios(
                     }
                 }
 
-                let fc: Vec<FilteredCandidate> = filter_candidates(candidates, &state, &pattern);
+                let fc: Vec<FilteredCandidate> = filter_candidates(candidates, state, &pattern);
 
                 if !fc.is_empty() {
                     println!("Selected Candidates for {}", state);
@@ -439,12 +437,10 @@ pub fn cli_scenarios(
                         input("Add selected candidate[s] to group? [Y]/n: ")?.to_uppercase();
                     if whatdo.starts_with('Y') || whatdo.is_empty() {
                         for cand in &fc {
-                            let candstr = match cand.surname.as_str() {
-                                "TICKET" => format!("{}:{}", cand.ticket, cand.party),
-                                _ => format!(
-                                    "{}:{} {}",
-                                    cand.ticket, cand.surname, cand.ballot_given_nm
-                                ),
+                            let candstr = if cand.surname.as_str() == "TICKET" {
+                                format!("{}:{}", cand.ticket, cand.party)
+                            } else {
+                                format!("{}:{} {}", cand.ticket, cand.surname, cand.ballot_given_nm)
                             };
                             group_cands.insert(candstr);
                             group_parties.insert(
@@ -512,8 +508,8 @@ pub fn cli_scenarios(
 
 // TODO: function to write scenarios back out
 
-/// Write an entire BTreeMap of Scenarios back out to TOML
-pub fn write_scenarios(input: BTreeMap<String, Scenario>, outfile: &mut dyn Write) -> Result<()> {
+/// Write an entire `BTreeMap` of `Scenarios` back out to TOML
+pub fn write_scenarios(input: &BTreeMap<String, Scenario>, outfile: &mut dyn Write) -> Result<()> {
     // we want the top-level tables in the doc to use [key] formatting and for groups to use [key.groups] formatting
     // so the "pretty" formatting gives us that
     // (this is important, because non-pretty results in inline tables)

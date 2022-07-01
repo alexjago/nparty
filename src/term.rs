@@ -52,13 +52,13 @@ pub fn decorate(input: &str, which: &str) -> String {
     let split_enz: Vec<&str> = input.split(END).collect();
     let mut output = String::with_capacity(input.len() + (2 * split_enz.len())); // both those are in bytes
 
-    for s in split_enz.iter() {
+    for s in &split_enz {
         output.push_str(which);
         output.push_str(&s.split(&which).collect::<Vec<&str>>().concat());
         output.push_str(END);
     }
 
-    for d in SPAN_SYMBOLS.iter() {
+    for d in &SPAN_SYMBOLS {
         if split_enz[split_enz.len() - 1].contains(d) {
             output.push_str(d);
         }
@@ -83,7 +83,7 @@ pub fn decorate_range(input: &str, range: Range<usize>, which: &str) -> String {
         let startz: Vec<&str> = initial.rsplitn(2, END).collect();
         // startz[0] will be what we need.
 
-        for d in SPAN_SYMBOLS.iter() {
+        for d in &SPAN_SYMBOLS {
             if startz[0].contains(d) {
                 output.push_str(d);
             }

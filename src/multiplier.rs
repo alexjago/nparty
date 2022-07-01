@@ -35,7 +35,7 @@ type BoothRecords = BTreeMap<String, (Vec<String>, Vec<f64>)>;
 
 pub fn project(
     parties: &Parties,
-    state: &StateAb,
+    state: StateAb,
     year: &str,
     npp_booths_path: &Path,
     sa1_breakdown_path: &Path,
@@ -46,7 +46,7 @@ pub fn project(
     // BTreeMap for Parties in general should fix that
     let mut partykeys: Vec<&str> = Vec::new();
     for k in parties.keys() {
-        partykeys.push(k)
+        partykeys.push(k);
     }
     let combinations = group_combos(&partykeys);
     //println!("Combinations:\n{:#?}", combinations);
@@ -125,7 +125,8 @@ pub fn project(
         {
             // All SA1s nationwide are in the one file - so any row with the wrong state can be safely skipped.
             continue;
-        } else if row
+        }
+        if row
             .get(sfl("year"))
             .context("Missing year field in record")?
             != year
@@ -193,7 +194,7 @@ pub fn project(
         .write_record(header)
         .context("error writing SA1_prefs header")?;
 
-    for (id, row) in outputn.iter() {
+    for (id, row) in &outputn {
         let mut out: Vec<String> = Vec::with_capacity(outlen);
         out.push(id.clone());
         for i in row {

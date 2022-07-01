@@ -26,7 +26,7 @@ pub fn aggregate(
     // 1. Load up SA1 NPP data
     let mut sa1_prefs: BTreeMap<String, Vec<f64>> = BTreeMap::new();
 
-    let mut sp_rdr = csv::ReaderBuilder::new()
+    let mut sa1_prefs_rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .has_headers(true)
         .from_path(sa1_prefs_path)
@@ -37,7 +37,7 @@ pub fn aggregate(
             )
         })?;
 
-    for record in sp_rdr.records() {
+    for record in sa1_prefs_rdr.records() {
         let row = record?;
         let id = row.get(0).context("empty row in SA1 prefs file")?;
         let mut numbers = Vec::with_capacity(row.len() - 1);
@@ -56,7 +56,7 @@ pub fn aggregate(
     let mut districts: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     let mut seen_sa1s: BTreeSet<String> = BTreeSet::new();
 
-    let mut sd_rdr = csv::ReaderBuilder::new()
+    let mut sa1_dists_rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .has_headers(true)
         .from_path(sa1_districts_path)
@@ -67,7 +67,7 @@ pub fn aggregate(
             )
         })?;
 
-    for record in sd_rdr.records() {
+    for record in sa1_dists_rdr.records() {
         let row = record?;
 
         if row.len() < 2 {
@@ -103,7 +103,7 @@ pub fn aggregate(
                 .unwrap_or(0.0_f64);
 
             if sa1_pop == 0.0_f64 {
-                multiplier = 0.0_f64
+                multiplier = 0.0_f64;
             } else {
                 multiplier = sa1_pop / sa1_total;
             }
@@ -113,9 +113,8 @@ pub fn aggregate(
             let sa1 = id.to_string();
             if seen_sa1s.contains(&sa1) {
                 continue;
-            } else {
-                seen_sa1s.insert(sa1);
             }
+            seen_sa1s.insert(sa1);
         }
         // 5. Aggregates (4) by district.
 
@@ -147,7 +146,7 @@ pub fn aggregate(
     let mut dist_wtr = csv::Writer::from_path(npp_dists_path)?;
 
     let mut header = vec![String::from("District")];
-    let sp_headers = sp_rdr.headers()?;
+    let sp_headers = sa1_prefs_rdr.headers()?;
     for i in sp_headers.iter().skip(1) {
         header.push(i.to_string());
     }
@@ -157,7 +156,7 @@ pub fn aggregate(
         .write_record(&header)
         .context("error writing npp_dists header")?;
 
-    for (id, row) in districts.iter() {
+    for (id, row) in &districts {
         let mut out: Vec<String> = Vec::with_capacity(header.len());
         out.push(id.clone());
         for i in row {

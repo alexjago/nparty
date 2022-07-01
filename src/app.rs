@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::PathBuf;
 
-use crate::config::*;
+use crate::config::{KnownConfigOptions, Scenario};
 use crate::utils::ToStateAb;
-use crate::*;
+use crate::{aggregator, booths, config, data, multiplier, upgrades, utils};
 use anyhow::{bail, Context};
 use clap::{AppSettings, ArgEnum, Parser, Subcommand, ValueHint};
 
@@ -223,16 +223,16 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
         eprintln!("Running Scenario {}", scen_name);
         // eprintln!("{:#?}", scenario);
 
-        let sa1b = scenario.sa1s_breakdown.as_ref();
-        let sa1p = scenario.sa1s_prefs.as_ref();
-        let sa1d = scenario.sa1s_dists.as_ref();
-        let nppd = scenario.npp_dists.as_ref();
-        let can_project = sa1p.is_some()
-            && sa1b.is_some()
+        let sa1s_breakdown = scenario.sa1s_breakdown.as_ref();
+        let sa1s_prefs = scenario.sa1s_prefs.as_ref();
+        let sa1s_dists = scenario.sa1s_dists.as_ref();
+        let npp_dists = scenario.npp_dists.as_ref();
+        let can_project = sa1s_prefs.is_some()
+            && sa1s_breakdown.is_some()
             && (args.phase == CliRunPhase::All || args.phase == CliRunPhase::Project);
-        let can_combine = sa1p.is_some()
-            && sa1d.is_some()
-            && nppd.is_some()
+        let can_combine = sa1s_prefs.is_some()
+            && sa1s_dists.is_some()
+            && npp_dists.is_some()
             && (args.phase == CliRunPhase::All || args.phase == CliRunPhase::Combine);
         let can_distribute =
             args.phase == CliRunPhase::All || args.phase == CliRunPhase::Distribute;
@@ -240,7 +240,7 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
         if can_distribute {
             booths::booth_npps(
                 &scenario.groups,
-                &scenario.state,
+                scenario.state,
                 &scenario.prefs_path,
                 &scenario.polling_places,
                 &scenario.npp_booths,
@@ -250,19 +250,19 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
         if can_project {
             multiplier::project(
                 &scenario.groups,
-                &scenario.state,
+                scenario.state,
                 &scenario.year,
                 &scenario.npp_booths,
-                sa1b.unwrap(),
-                sa1p.unwrap(),
+                sa1s_breakdown.unwrap(),
+                sa1s_prefs.unwrap(),
             )
             .context("Could not perform projection phase; stopping.")?;
         }
         if can_combine {
             aggregator::aggregate(
-                sa1p.unwrap(),
-                sa1d.unwrap(),
-                nppd.unwrap(),
+                sa1s_prefs.unwrap(),
+                sa1s_dists.unwrap(),
+                npp_dists.unwrap(),
                 args.js,
                 &scenario.groups,
             )
@@ -314,12 +314,12 @@ pub fn do_configure(args: CliConfigure) -> anyhow::Result<()> {
     // eprintln!("{:#?}", out);
 
     let mut outfile = File::create(outpath)?;
-    config::write_scenarios(out, &mut outfile)?;
+    config::write_scenarios(&out, &mut outfile)?;
     Ok(())
 }
 
 /// Prints an example configuration TOML to standard output.
-pub fn print_example_config(args: CliExample) -> anyhow::Result<()> {
+pub fn print_example_config(args: &CliExample) -> anyhow::Result<()> {
     match args.year.as_ref() {
         "2016" => println!("{}", include_str!("../example_config_2016.toml")),
         "2019" => println!("{}", include_str!("../example_config.toml")),
@@ -332,37 +332,35 @@ pub fn print_example_config(args: CliExample) -> anyhow::Result<()> {
 }
 
 /// Prints README.md to standard output
-pub fn print_readme() -> anyhow::Result<()> {
+pub fn print_readme() {
     let readme = include_str!("../README.md");
     println!("{}", readme);
-    Ok(())
 }
 
 /// Prints the license details.
 /// Before releasing, run
 ///     cargo-license --avoid-build-deps --avoid-dev-deps -a -t > src/dependencies.tsv
-pub fn print_license() -> anyhow::Result<()> {
+pub fn print_license() {
     println!(include_str!("license-preface.txt"));
     println!("\nnparty integrates code (dependencies) from a number of other authors. \nDetails of these dependencies are listed below, including the authors, licenses, and links to source code:\n");
     println!(include_str!("dependencies.tsv"));
-    Ok(())
 }
 
 /// Does the top-level command.
 pub fn actual(m: Cli) -> anyhow::Result<()> {
-    use CliCommands::*;
+    use CliCommands::{Configure, Data, Example, License, List, Readme, Run, Upgrade};
     match m.command {
         Configure(sm) => do_configure(sm)?,
         Data(sm) => match sm {
             CliData::Download { DL_FOLDER } => data::download(&DL_FOLDER)?,
-            CliData::Examine { FILE } => FILE
-                .filter(|x| x.exists())
-                .map_or_else(data::examine_txt, |x| data::examine_html(&x)),
+            CliData::Examine { FILE } => {
+                FILE.map_or_else(data::examine_txt, |x| data::examine_html(&x));
+            }
         },
-        Example(sm) => print_example_config(sm)?,
-        License => print_license()?,
+        Example(sm) => print_example_config(&sm)?,
+        License => print_license(),
         List(sm) => config::list_scenarios(&sm.configfile)?,
-        Readme => print_readme()?,
+        Readme => print_readme(),
         Run(sm) => run(sm)?,
         Upgrade(sm) => match sm {
             CliUpgrade::Prefs(ssm) => upgrades::do_upgrade_prefs(ssm)?,

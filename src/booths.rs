@@ -11,7 +11,7 @@ use std::fs::create_dir_all;
 use std::path::Path;
 
 use super::term;
-use super::utils::*;
+use super::utils::{fix_prefs_headers, open_csvz_from_path, StateAb};
 
 const NPP_FIELD_NAMES: [&str; 5] = ["ID", "Division", "Booth", "Latitude", "Longitude"];
 // for the output
@@ -41,9 +41,10 @@ fn non_booth_convert(input: &str) -> &str {
 
 // `let` can only be used in a function
 fn ttyjump() -> &'static str {
-    match atty::is(atty::Stream::Stderr) {
-        true => term::TTYJUMP,
-        false => "",
+    if atty::is(atty::Stream::Stderr) {
+        term::TTYJUMP
+    } else {
+        ""
     }
 }
 
@@ -88,7 +89,7 @@ pub fn make_combo_tree(groups_count: usize) -> BTreeMap<Vec<usize>, usize> {
     output
 }
 
-/// This represents a row in the polling_places file
+/// This represents a row in the `polling_places` file
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)] // look, this isn't aesthetic but it matches the file
 #[allow(dead_code)]
@@ -117,7 +118,7 @@ pub type Parties = IndexMap<String, Vec<String>>;
 //       otherwise it'll never work in WASM.
 pub fn booth_npps(
     parties: &Parties,
-    state: &StateAb,
+    state: StateAb,
     formal_prefs_path: &Path,
     polling_places_path: &Path,
     npp_booths_path: &Path,
@@ -146,7 +147,7 @@ pub fn booth_npps(
     let mut combo_order: HashMap<String, usize> = HashMap::new();
     combo_order.insert("None".to_string(), 0);
     let mut c: usize = 1;
-    for i in combinations.iter() {
+    for i in &combinations {
         combo_order.insert(i.clone(), c);
         c += 1;
     }
@@ -190,14 +191,11 @@ pub fn booth_npps(
 
         let record: BoothRecord = result?.deserialize(None)?; //
                                                               // do actual-useful things with record
-        if record.State != *state {
+        if record.State != state {
             continue;
         }
 
-        let dvb = (
-            record.DivisionNm.to_owned(),
-            record.PollingPlaceNm.to_owned(),
-        );
+        let dvb = (record.DivisionNm.clone(), record.PollingPlaceNm.clone());
         booths.insert(dvb, record);
     }
 
@@ -222,13 +220,13 @@ pub fn booth_npps(
     // Now we figure out a bunch of things.
     // We index fields by "TICKETCODE:LASTNAME Given Names"
 
-    let atl_start = PREFS_FIELD_NAMES.len(); // relative to in general
-    let mut btl_start: usize = 0; // relative to atl_start
+    let above_start = PREFS_FIELD_NAMES.len(); // relative to in general
+    let mut below_start: usize = 0; // relative to atl_start
 
     // 2022 lack-of-quoting problems
-    let prefs_headers_fixed = fix_prefs_headers(prefs_headers, atl_start);
+    let prefs_headers_fixed = fix_prefs_headers(&prefs_headers, above_start);
 
-    for i in (atl_start + 1)..prefs_headers_fixed.len() {
+    for i in (above_start + 1)..prefs_headers_fixed.len() {
         // The first ticket is labelled "A" and there are two candidates per ticket.
         // So the _second_ "A:", if it exists, is the first BTL field.
         // If it doesn't exist (loop exhausts) then _all_ we have are UnGrouped candidates
@@ -238,47 +236,47 @@ pub fn booth_npps(
             .context("No candidates")?
             .starts_with("A:")
         {
-            btl_start = i - atl_start;
+            below_start = i - above_start;
             break;
         }
     }
-    let btl_start = btl_start; // make immutable now
+    let below_start = below_start; // make immutable now
 
     // Create candidate number index
 
     let mut cand_nums: HashMap<&str, usize> = HashMap::new();
-    for (i, pref) in prefs_headers_fixed.iter().skip(atl_start).enumerate() {
+    for (i, pref) in prefs_headers_fixed.iter().skip(above_start).enumerate() {
         cand_nums.insert(pref, 1 + i);
     }
     let cand_nums = cand_nums; // make immutable now
 
     // set up some lookups...
     let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
-    let mut groups_atl: HashMap<usize, Vec<usize>> = HashMap::new();
-    let mut groups_btl: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut groups_above: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut groups_below: HashMap<usize, Vec<usize>> = HashMap::new();
 
     for (party, cand_list) in parties.iter() {
-        let mut pcand_nums = Vec::new();
-        let mut acands = Vec::new();
-        let mut bcands = Vec::new();
+        let mut party_cand_nums = Vec::new();
+        let mut above_cands = Vec::new();
+        let mut below_cands = Vec::new();
         for cand in cand_list {
             let cn = cand_nums
                 .get::<str>(cand)
                 .context("missing cand_num")?
                 .to_owned();
-            pcand_nums.push(cn);
-            if cn > btl_start {
-                bcands.push(cn)
+            party_cand_nums.push(cn);
+            if cn > below_start {
+                below_cands.push(cn);
             } else {
-                acands.push(cn)
+                above_cands.push(cn);
             }
         }
         let p_idx = *party_indices
             .get(party.as_str())
             .with_context(|| format!("The party/group {} is missing from party_indices", party))?;
-        groups.insert(p_idx, pcand_nums);
-        groups_atl.insert(p_idx, acands);
-        groups_btl.insert(p_idx, bcands);
+        groups.insert(p_idx, party_cand_nums);
+        groups_above.insert(p_idx, above_cands);
+        groups_below.insert(p_idx, below_cands);
     }
 
     // eprintln!("cand_nums: {:?}", cand_nums);
@@ -295,7 +293,7 @@ pub fn booth_npps(
 
     let mut division_specials: BTreeMap<DivBooth, Vec<usize>> = BTreeMap::new();
 
-    let cands_count = (&prefs_headers_fixed).len() - atl_start;
+    let cands_count = (&prefs_headers_fixed).len() - above_start;
 
     // we need to figure out how we're going to deserialize each record
     // or not - we need custom logic for most of it anyway
@@ -314,9 +312,10 @@ pub fn booth_npps(
         let divnm = &record[1];
         let boothnm = &record[2];
 
-        if divnm.starts_with("---") {
-            panic!("Please use `16to19.py` to first upgrade your old data to the new format.");
-        }
+        assert!(
+            !divnm.starts_with("---"),
+            "Please first run `nparty upgrade prefs` to convert this data to the newest format."
+        );
 
         // Now we analyse nPP. We categorise the preference sequence by its highest value for each group of candidates
 
@@ -326,7 +325,7 @@ pub fn booth_npps(
         // NOTE 2020-05-14: I am quite confident this ATL-vs-BTL code is correct. It produces the correct number of BTLs...
         // To be fair, non-BTLs don't have trailing commas to confuse the issue with...
         let mut is_btl: bool = false; // we must test whether it is, but...
-        let bsa = atl_start + btl_start; // btl_start absolute
+        let bsa = above_start + below_start; // btl_start absolute
         if record.len() > bsa {
             // ^^^ this is the actual biggest speedup for default 2019 files.
             // If there aren't any fields for BTLs, there aren't any at all...
@@ -354,10 +353,7 @@ pub fn booth_npps(
             is_btl = btl_counts.iter().all(|c| *c == 1);
         }
 
-        let groups_which = match is_btl {
-            true => &groups_btl,
-            false => &groups_atl,
-        };
+        let groups_which = if is_btl { &groups_below } else { &groups_above };
         if is_btl {
             btl_count += 1;
         }
@@ -371,7 +367,7 @@ pub fn booth_npps(
         for (p, cns) in groups_which.iter() {
             let mut curbest: usize = cands_count; // this heavily reduced HashMapping
             for i in cns {
-                let bal = match record.get(i + atl_start - 1) {
+                let bal = match record.get(i + above_start - 1) {
                     // always check: is this the right offset?
                     Some(x) => match x.trim().parse::<usize>() {
                         Ok(n) => n,
@@ -406,7 +402,7 @@ pub fn booth_npps(
 
         // progress!
         progress += 1;
-        if progress % 100000 == 0 {
+        if progress % 100_000 == 0 {
             eprintln!(
                 "{}\t\tPreferencing progress: {} ballots", // normally a leading {}
                 ttyjump(),
@@ -427,25 +423,24 @@ pub fn booth_npps(
     let mut to_remove = Vec::new();
 
     // What we're doing here is aggregating all special votes.
-    for (bk, bv) in booth_counts.iter() {
+    for (bk, bv) in &booth_counts {
         for w in &NON_BOOTH_CONVERT {
             if bk.1.contains(w) {
                 let divbooth: DivBooth = (bk.0.clone(), non_booth_convert(w).to_string());
-                #[allow(clippy::map_entry)]
-                if let Some(db) = division_specials.get_mut(&divbooth) {
-                    for j in 0..combinations.len() {
-                        db[j] += bv[j];
-                    }
-                } else {
-                    division_specials.insert(divbooth, bv.clone());
+                let db = division_specials
+                    .entry(divbooth)
+                    .or_insert_with(|| vec![0_usize; bv.len()]);
+                for j in 0..combinations.len() {
+                    db[j] += bv[j];
                 }
+                // ^^ Still not sure I like this version. We didn't need to do the addition on new entries before.
                 to_remove.push(bk.clone());
                 break;
             }
         }
     }
 
-    for bk in to_remove.iter() {
+    for bk in &to_remove {
         booth_counts.remove(bk);
     }
 
@@ -466,7 +461,7 @@ pub fn booth_npps(
         .from_path(npp_booths_path)?;
 
     let npp_header = &mut NPP_FIELD_NAMES.to_vec();
-    for i in combinations.iter() {
+    for i in &combinations {
         npp_header.push(i.as_str());
     }
     npp_header.push("Total");
@@ -497,7 +492,7 @@ pub fn booth_npps(
     }
     wtr.flush().context("error writing booths")?;
 
-    for (bk, bv) in division_specials.iter() {
+    for (bk, bv) in &division_specials {
         let mut bdeets: Vec<String> = vec![
             "".to_string(),
             bk.0.clone(),
