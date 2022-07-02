@@ -127,7 +127,7 @@ ndk-sys	0.2.2	The Rust Windowing contributors	https://github.com/rust-windowing/
 nix	0.22.3	The nix-rust Project Developers	https://github.com/nix-rust/nix	MIT		Rust friendly bindings to *nix APIs
 nohash-hasher	0.2.0	Parity Technologies <admin@parity.io>	https://github.com/paritytech/nohash-hasher	Apache-2.0 OR MIT		An implementation of `std::hash::Hasher` which does not hash at all.
 nom	7.1.1	contact@geoffroycouprie.com	https://github.com/Geal/nom	MIT		A byte-oriented, zero-copy, parser combinators library
-nparty	0.1.3	Alex Jago <4475543+alexjago@users.noreply.github.com>		Apache-2.0 OR MIT		N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis.
+nparty	0.1.3	Alex Jago <4475543+alexjago@users.noreply.github.com>	https://github.com/alexjago/nparty	Apache-2.0 OR MIT		N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis.
 num-traits	0.2.15	The Rust Project Developers	https://github.com/rust-num/num-traits	Apache-2.0 OR MIT		Numeric traits for generic mathematics
 num_enum	0.5.7	Daniel Wagner-Hall <dawagner@gmail.com>|Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>|Vincent Esche <regexident@gmail.com>	https://github.com/illicitonion/num_enum	Apache-2.0 OR BSD-3-Clause OR MIT		Procedural macros to make inter-operation between primitives and enums easier.
 num_enum_derive	0.5.7	Daniel Wagner-Hall <dawagner@gmail.com>|Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>|Vincent Esche <regexident@gmail.com>	https://github.com/illicitonion/num_enum	Apache-2.0 OR BSD-3-Clause OR MIT		Internal implementation details for ::num_enum (Procedural macros to make inter-operation between primitives and enums easier)

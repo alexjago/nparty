@@ -123,7 +123,6 @@ pub fn booth_npps(
     polling_places_path: &Path,
     npp_booths_path: &Path,
 ) -> Result<()> {
-    // cut down for WIP-ing
     eprintln!("\tDistributing Preferences");
     let mut partykeys = Vec::with_capacity(parties.len());
     for i in parties.keys() {
@@ -312,10 +311,12 @@ pub fn booth_npps(
         let divnm = &record[1];
         let boothnm = &record[2];
 
-        assert!(
-            !divnm.starts_with("---"),
-            "Please first run `nparty upgrade prefs` to convert this data to the newest format."
-        );
+        if divnm.starts_with("---") {
+            bail!(
+                "This input file is in the 2016 format and needs to be upgraded with\n\
+                \tnparty upgrade prefs",
+            );
+        }
 
         // Now we analyse nPP. We categorise the preference sequence by its highest value for each group of candidates
 
