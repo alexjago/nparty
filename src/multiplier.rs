@@ -18,17 +18,16 @@ use std::path::Path;
 use tracing::info;
 
 /// Convert a header to a column index
-fn sfl(input: &str) -> usize {
-    match input {
-        "year" => 0,
-        "state_ab" => 1,
-        "div_nm" => 2,
-        "SA1_id" => 3,
-        "pp_id" => 4,
-        "pp_nm" => 5,
-        "votes" => 6,
-        _ => unreachable!(),
-    }
+#[allow(non_camel_case_types)]
+enum sfl {
+    year = 0,
+    state_ab = 1,
+    div_nm = 2,
+    SA1_id = 3,
+    #[allow(dead_code)]
+    pp_id = 4,
+    pp_nm = 5,
+    votes = 6,
 }
 
 type BoothRecords = BTreeMap<String, (Vec<String>, Vec<f64>)>;
@@ -160,12 +159,12 @@ pub fn project(
     let mut row = csv::StringRecord::new();
     while sa1_rdr.read_record(&mut row)? {
         let id = row
-            .get(sfl("SA1_id"))
+            .get(sfl::SA1_id as usize)
             .context("Missing SA1_id field in record")?
             .to_owned();
 
         if row
-            .get(sfl("state_ab"))
+            .get(sfl::state_ab as usize)
             .context("Missing state_ab field in record")?
             != state.to_string()
         {
@@ -173,7 +172,7 @@ pub fn project(
             continue;
         }
         if row
-            .get(sfl("year"))
+            .get(sfl::year as usize)
             .context("Missing year field in record")?
             != year
         {
@@ -186,11 +185,11 @@ pub fn project(
         }
 
         let sa1_booth_votes: f64 = row
-            .get(sfl("votes"))
+            .get(sfl::votes as usize)
             .and_then(|x| x.parse::<f64>().ok())
             .unwrap_or(0.0_f64);
 
-        let divbooth = row[sfl("div_nm")].to_owned() + "_" + &row[sfl("pp_nm")];
+        let divbooth = row[sfl::div_nm as usize].to_owned() + "_" + &row[sfl::pp_nm as usize];
 
         if let Some((_, boothvotes)) = &booths.get(&divbooth) {
             // Rarely, there's no entry if no formal votes at a booth
