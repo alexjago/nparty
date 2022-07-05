@@ -1,6 +1,6 @@
 //! Assorted utility structs and functions.
 
-use anyhow::{Context, Result};
+use color_eyre::eyre::{Context, ContextCompat, Result};
 use csv::StringRecord;
 use inflector::cases::titlecase::to_title_case;
 use std::char;

@@ -1,5 +1,5 @@
 //! The SA1s-to-districts combination phase.
-use anyhow::{Context, Result};
+use color_eyre::eyre::{Context, ContextCompat, Result};
 use indexmap::IndexMap;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,6 +20,7 @@ pub fn aggregate(
     //! 4. Also split (3) according to (2) where necessary/available
     //! 5. Aggregates (4) by district.
     //! 6. Output to `npp_dists_path`
+    //! TODO: convert all of the above to streams for WASM compatibility
 
     println!("\tCombining SA1s into Districts");
 

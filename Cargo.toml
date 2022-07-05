@@ -31,9 +31,14 @@ url = "2.2.2"
 ehttp = "0.2.0"
 glob = "0.3.0"
 Inflector = "0.11.4"
-anyhow = "1.0.58"
+# anyhow = "1.0.58"
 klask = { git = "https://github.com/MichalGniadek/klask" }
 indexmap = { version = "1.9.1", features = ["serde-1"] }
+color-eyre = { default-features = false, version = "0.6.1" }
+tracing = "0.1.35"
+tracing-subscriber = "0.3.14"
+clap-verbosity-flag = "1.0.1"
+log = "0.4.17"
 
 [profile.release]
 debug = false

@@ -1,5 +1,5 @@
 //! Ballot-file format upgrades and SA1 geography upgrades.
-use anyhow::{bail, Context};
+use color_eyre::eyre::{bail, Context, ContextCompat, Result};
 
 use crate::app::CliUpgradeSa1s;
 use crate::utils::{
@@ -156,7 +156,7 @@ pub fn upgrade_prefs_16_19(
 
 /// Sniff the era of a CSV stream
 /// It's a stream, so be sure it's the start
-pub fn era_sniff(infile: &mut dyn Read) -> anyhow::Result<usize> {
+pub fn era_sniff(infile: &mut dyn Read) -> color_eyre::eyre::Result<usize> {
     let mut inrdr = csv::Reader::from_reader(infile);
     let hdr: Vec<&str> = inrdr.headers()?.into_iter().collect();
 
@@ -173,7 +173,7 @@ pub fn era_sniff(infile: &mut dyn Read) -> anyhow::Result<usize> {
 }
 
 /// Performs the `upgrade sa1s` subcommand.
-pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> anyhow::Result<()> {
+pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> color_eyre::eyre::Result<()> {
     // 1. Read the correspondence file into a map
 
     #[derive(Debug)]
@@ -270,7 +270,7 @@ pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> anyhow::Result<()> {
 }
 
 /// Performs the `upgrade prefs` subcommand.
-pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> anyhow::Result<()> {
+pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> color_eyre::eyre::Result<()> {
     let candspath = args.candidates;
     let inpath = args.input;
     let outpath = args.output;

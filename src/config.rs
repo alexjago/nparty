@@ -6,7 +6,7 @@ use crate::utils::{
     filter_candidates, input, open_csvz_from_path, read_party_abbrvs, CandsData, FilteredCandidate,
     StateAb,
 };
-use anyhow::{bail, Context, Result};
+use color_eyre::eyre::{bail, Context, ContextCompat, Result};
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap};

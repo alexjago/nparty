@@ -1,7 +1,7 @@
 //! The booths-to-SA1s projection phase.
 use super::booths::{group_combos, Parties};
 use super::utils::StateAb;
-use anyhow::{bail, Context, Result};
+use color_eyre::eyre::{bail, Context, ContextCompat, Result};
 use std::collections::BTreeMap;
 use std::fs::create_dir_all;
 

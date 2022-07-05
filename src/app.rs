@@ -1,5 +1,4 @@
 //! The main app logic: argument structs and most top-level functions
-
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::PathBuf;
@@ -7,17 +6,23 @@ use std::path::PathBuf;
 use crate::config::{KnownConfigOptions, Scenario};
 use crate::utils::ToStateAb;
 use crate::{aggregator, booths, config, data, multiplier, upgrades, utils};
-use anyhow::{bail, Context};
 use clap::{AppSettings, ArgEnum, Parser, Subcommand, ValueHint};
+use clap_verbosity_flag::{InfoLevel, Verbosity};
+
+use color_eyre::eyre::{Context, ContextCompat};
+use color_eyre::Help;
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[clap(version, about)]
 #[clap(global_setting(AppSettings::PropagateVersion))]
 #[clap(global_setting(AppSettings::UseLongFormatForHelpSubcommand))]
 pub struct Cli {
-    // We have an enum inside the struct to allow for global options here...
     #[clap(subcommand)]
     pub command: CliCommands,
+    /// -qqq for OFF through -vv for TRACE
+    #[clap(flatten)]
+    pub verbose: Verbosity<InfoLevel>,
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -57,12 +62,38 @@ pub enum CliData {
     },
 }
 
-/// Print an example configuration for the specified year, if available (TOML format)
+/// Print an example configuration (TOML format)
 #[derive(Parser, Debug, PartialEq)]
 #[allow(non_snake_case)]
 pub struct CliExample {
-    /// the year of the config
-    year: String,
+    /// The year of the configuration
+    #[clap(arg_enum)]
+    year: CliExampleYear,
+}
+
+/// The year for the example configuration
+#[derive(Debug, PartialEq, Clone, ArgEnum)]
+pub enum CliExampleYear {
+    #[clap(name = "2016")]
+    TwentySixteen = 2016,
+    #[clap(name = "2019")]
+    TwentyNineteen = 2019,
+    // #[clap(name = "2022")]
+    // TwentyTwentyTwo = 2022,
+}
+
+/// We define the `Display` format for a `CliExample` to be the contents of the relevant year's example.
+impl std::fmt::Display for CliExample {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self.year {
+                CliExampleYear::TwentySixteen => include_str!("../example_config_2016.toml"),
+                CliExampleYear::TwentyNineteen => include_str!("../example_config_2019.toml"),
+            }
+        )
+    }
 }
 
 /// Upgrade older electoral and geographic data files to be compatible with more recent ones.
@@ -203,7 +234,7 @@ pub enum CliRunPhase {
 }
 
 /// Performs the `run` subcommand.
-pub fn run(args: CliRun) -> anyhow::Result<()> {
+pub fn run(args: CliRun) -> color_eyre::eyre::Result<()> {
     let cfgpath = args.configfile;
 
     // Get data out of config
@@ -213,14 +244,22 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
         .scenario
         .unwrap_or_else(|| cfg.keys().cloned().collect());
 
-    for scen_name in scenario_names {
-        let scenario = cfg.get(&scen_name).with_context(|| {
-            format!(
-                "Requested scenario {} not found in configuration file.",
-                scen_name
-            )
-        })?;
-        eprintln!("Running Scenario {}", scen_name);
+    for scen_name in &scenario_names {
+        let scenario = cfg
+            .get(scen_name)
+            .with_context(|| {
+                format!(
+                    "Requested scenario {} not found in configuration file.",
+                    scen_name
+                )
+            })
+            .with_suggestion(|| {
+                format!(
+                    "For a table of available scenarios, try running\n\tnparty list {:?}",
+                    &cfgpath
+                )
+            })?;
+        info!("Running Scenario {}", scen_name);
         // eprintln!("{:#?}", scenario);
 
         let sa1s_breakdown = scenario.sa1s_breakdown.as_ref();
@@ -269,12 +308,12 @@ pub fn run(args: CliRun) -> anyhow::Result<()> {
             .context("Could not perform combination phase; stopping.")?;
         }
     }
-    eprintln!("Done!");
+    info!("Done!");
     Ok(())
 }
 
 /// Performs the `configure` subcommand.
-pub fn do_configure(args: CliConfigure) -> anyhow::Result<()> {
+pub fn do_configure(args: CliConfigure) -> color_eyre::eyre::Result<()> {
     // requireds
     let candspath = args.candidates;
     let outpath = args.configfile;
@@ -318,25 +357,6 @@ pub fn do_configure(args: CliConfigure) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Prints an example configuration TOML to standard output.
-pub fn print_example_config(args: &CliExample) -> anyhow::Result<()> {
-    match args.year.as_ref() {
-        "2016" => println!("{}", include_str!("../example_config_2016.toml")),
-        "2019" => println!("{}", include_str!("../example_config.toml")),
-        _ => bail!(
-            "No example available for the year {}. Sorry about that!",
-            args.year
-        ),
-    };
-    Ok(())
-}
-
-/// Prints README.md to standard output
-pub fn print_readme() {
-    let readme = include_str!("../README.md");
-    println!("{}", readme);
-}
-
 /// Prints the license details.
 /// Before releasing, run
 ///     cargo-license --avoid-build-deps --avoid-dev-deps -a -t > src/dependencies.tsv
@@ -347,9 +367,9 @@ pub fn print_license() {
 }
 
 /// Does the top-level command.
-pub fn actual(m: Cli) -> anyhow::Result<()> {
+pub fn actual(m: CliCommands) -> color_eyre::eyre::Result<()> {
     use CliCommands::{Configure, Data, Example, License, List, Readme, Run, Upgrade};
-    match m.command {
+    match m {
         Configure(sm) => do_configure(sm)?,
         Data(sm) => match sm {
             CliData::Download { DL_FOLDER } => data::download(&DL_FOLDER)?,
@@ -357,10 +377,10 @@ pub fn actual(m: Cli) -> anyhow::Result<()> {
                 FILE.map_or_else(data::examine_txt, |x| data::examine_html(&x));
             }
         },
-        Example(sm) => print_example_config(&sm)?,
+        Example(sm) => println!("{}", sm),
         License => print_license(),
         List(sm) => config::list_scenarios(&sm.configfile)?,
-        Readme => print_readme(),
+        Readme => println!("{}", include_str!("../README.md")),
         Run(sm) => run(sm)?,
         Upgrade(sm) => match sm {
             CliUpgrade::Prefs(ssm) => upgrades::do_upgrade_prefs(ssm)?,

@@ -5,7 +5,7 @@ use std::fs::{create_dir_all, write, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::Context;
+use color_eyre::eyre::Context;
 
 use crate::utils::fetch_blocking;
 
@@ -93,7 +93,7 @@ pub fn examine_txt() {
 }
 
 /// Download all the links to `dldir`.
-pub fn download(dldir: &Path) -> anyhow::Result<()> {
+pub fn download(dldir: &Path) -> color_eyre::eyre::Result<()> {
     let sacred_texts = make_map();
 
     let mut dldir = dldir;

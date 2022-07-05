@@ -2,13 +2,15 @@
 /// We want to reduce each unique preference sequence to some ordering
 ///    of each of the parties. For example, for four parties there are 65 orderings:
 ///   (0!) + (4 * 1!) + (6 * 2!) + (4 * 3!) + (4!)
-use anyhow::{bail, Context, Result};
+use color_eyre::eyre::{bail, eyre, Context, ContextCompat, Result};
+use color_eyre::Section;
 use factorial::Factorial;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::create_dir_all;
 use std::path::Path;
+use tracing::{info, trace};
 
 use super::term;
 use super::utils::{fix_prefs_headers, open_csvz_from_path, StateAb};
@@ -123,7 +125,7 @@ pub fn booth_npps(
     polling_places_path: &Path,
     npp_booths_path: &Path,
 ) -> Result<()> {
-    eprintln!("\tDistributing Preferences");
+    info!("\tDistributing Preferences");
     let mut partykeys = Vec::with_capacity(parties.len());
     for i in parties.keys() {
         partykeys.push(i.as_str());
@@ -140,7 +142,7 @@ pub fn booth_npps(
     let combo_tree = make_combo_tree(partykeys.len());
 
     let combinations = group_combos(&partykeys);
-    // eprintln!("Combinations:\n{:#?}", combinations);
+    trace!("Combinations:\n{:#?}", combinations);
 
     // this should get obsoleted by the combo_tree method
     let mut combo_order: HashMap<String, usize> = HashMap::new();
@@ -151,12 +153,13 @@ pub fn booth_npps(
         c += 1;
     }
 
-    // eprintln!("Combo tree:\n");
-    // for (k, v) in combo_tree.iter(){
-    //     eprintln!("{:?}:\t{:?}\t{}", k, v, combinations[*v]);
-    // }
-    //
-    // return;
+    trace!(
+        "Combo tree:\n{}",
+        combo_tree
+            .iter()
+            .map(|(k, v)| format!("{:?}:\t{:?}\t{}", k, v, combinations[*v]))
+            .join("\n")
+    );
 
     // this is now just for actual booth data
     // For some gods-forsaken reason, the PollingPlaceID is not the Vote Collection Point ID
@@ -184,7 +187,7 @@ pub fn booth_npps(
         }
 
         // if row_count > 22 {
-        //     eprintln!("{:#?}", booths);
+        //     trace!("{:#?}", booths);
         //     break;
         // }
 
@@ -198,7 +201,7 @@ pub fn booth_npps(
         booths.insert(dvb, record);
     }
 
-    // eprintln!("Loaded {} polling places", row_count - 2);
+    trace!("Loaded {} polling places", row_count - 2);
 
     // ***** Iterating over Preferences *****
 
@@ -213,8 +216,7 @@ pub fn booth_npps(
         .from_reader(open_csvz_from_path(formal_prefs_path)?);
 
     let prefs_headers = prefs_rdr.headers()?.clone();
-    // eprintln!("Prefs headers: {:?}", prefs_headers.as_slice());
-    // eprintln!("\nNo actual preferences processed yet, but we successfully opened the zipfile and the headers look like this:\n{:#?}", prefs_headers);
+    trace!("\nNo actual preferences processed yet, but we successfully opened the zipfile and the raw headers look like this:\n{:#?}", prefs_headers);
 
     // Now we figure out a bunch of things.
     // We index fields by "TICKETCODE:LASTNAME Given Names"
@@ -243,16 +245,16 @@ pub fn booth_npps(
 
     // Create candidate number index
 
-    let mut cand_nums: HashMap<&str, usize> = HashMap::new();
+    let mut cand_nums: BTreeMap<&str, usize> = BTreeMap::new();
     for (i, pref) in prefs_headers_fixed.iter().skip(above_start).enumerate() {
         cand_nums.insert(pref, 1 + i);
     }
     let cand_nums = cand_nums; // make immutable now
 
     // set up some lookups...
-    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
-    let mut groups_above: HashMap<usize, Vec<usize>> = HashMap::new();
-    let mut groups_below: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    let mut groups_above: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    let mut groups_below: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
 
     for (party, cand_list) in parties.iter() {
         let mut party_cand_nums = Vec::new();
@@ -278,12 +280,17 @@ pub fn booth_npps(
         groups_below.insert(p_idx, below_cands);
     }
 
-    // eprintln!("cand_nums: {:?}", cand_nums);
-    // eprintln!("\nFull Groups: {:?}", groups);
-    // eprintln!("ATL Groups: {:?}", groups_atl);
-    // eprintln!("BTL Groups: {:?}", groups_btl);
+    trace!("cand_nums:\n{}", {
+        let mut a: Vec<(&str, usize)> = Vec::new();
+        a.extend(cand_nums);
+        a.sort_by(|&(_, a), &(_, b)| a.cmp(&b));
+        a.iter().map(|(s, u)| format!("{:4}\t{}", u, s)).join("\n")
+    });
+    trace!("\nFull Groups: {:?}", groups);
+    trace!("ATL Groups: {:?}", groups_above);
+    trace!("BTL Groups: {:?}", groups_below);
 
-    eprintln!();
+    eprintln!(); // still a normal eprintln for reasons
 
     // At long last! It is time to actually go over the rows!
 
@@ -312,10 +319,9 @@ pub fn booth_npps(
         let boothnm = &record[2];
 
         if divnm.starts_with("---") {
-            bail!(
-                "This input file is in the 2016 format and needs to be upgraded with\n\
-                \tnparty upgrade prefs",
-            );
+            // TODO if this is a NOT, it is inverted for testing
+            return Result::Err(eyre!("Preferences file is in the 2016 format."))
+                .suggestion("Upgrade the file to the 2019+ format with:\n\tnparty upgrade prefs");
         }
 
         // Now we analyse nPP. We categorise the preference sequence by its highest value for each group of candidates
@@ -404,7 +410,7 @@ pub fn booth_npps(
         // progress!
         progress += 1;
         if progress % 100_000 == 0 {
-            eprintln!(
+            info!(
                 "{}\t\tPreferencing progress: {} ballots", // normally a leading {}
                 ttyjump(),
                 progress
@@ -413,13 +419,13 @@ pub fn booth_npps(
     }
 
     // and we are done with the main task!
-    eprintln!(
-        "{}\t\tPreferencing complete: {} ballots. ({} were BTL)",
+    info!(
+        "{}\t\tPreferencing complete: {} ballots ({} were BTL)",
         ttyjump(),
         progress,
         btl_count
     );
-    eprintln!("\t\tAggregating Absents, Postals, Prepolls & Provisionals");
+    info!("\t\tAggregating Absents, Postals, Prepolls & Provisionals");
 
     let mut to_remove = Vec::new();
 
@@ -447,7 +453,7 @@ pub fn booth_npps(
 
     // [NPP_FIELD_NAMES] + [combinations] + [total]
 
-    // eprintln!("\t\tWriting File");
+    info!("\t\tWriting File");
 
     // and now we write
     // first create directory if needed
@@ -513,6 +519,5 @@ pub fn booth_npps(
     }
     wtr.flush().context("Failed to finalise writing booths")?;
 
-    eprintln!("\t\tDone!");
     Ok(())
 }
