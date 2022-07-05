@@ -4,7 +4,6 @@ use super::utils::StateAb;
 use color_eyre::eyre::{bail, Context, ContextCompat, Result};
 use std::collections::BTreeMap;
 use std::fs::create_dir_all;
-
 /// This file corresponds to `SA1s_Multiplier.py`
 
 /// The AEC have given us a
@@ -16,6 +15,7 @@ use std::fs::create_dir_all;
 /// [sa1s; booths] * [booths; orders] = [sa1s; orders]
 /// except that [sa1s; booths] is so sparse as to be represented a little differently.
 use std::path::Path;
+use tracing::info;
 
 /// Convert a header to a column index
 fn sfl(input: &str) -> usize {
@@ -33,27 +33,13 @@ fn sfl(input: &str) -> usize {
 
 type BoothRecords = BTreeMap<String, (Vec<String>, Vec<f64>)>;
 
-pub fn project(
-    parties: &Parties,
-    state: StateAb,
-    year: &str,
+/// *** Load up NPP Booth Data ***
+/// this is the [booths; orders] matrix equivalent
+/// Also, we calculate the output length here for reasons
+fn load_npp_booths(
+    combinations: &[String],
     npp_booths_path: &Path,
-    sa1_breakdown_path: &Path,
-    sa1_prefs_path: &Path,
-) -> Result<()> {
-    eprintln!("\tProjecting results onto SA1s");
-    // potential soundness issue: is this going to work out the same way?
-    // BTreeMap for Parties in general should fix that
-    let mut partykeys: Vec<&str> = Vec::new();
-    for k in parties.keys() {
-        partykeys.push(k);
-    }
-    let combinations = group_combos(&partykeys);
-    //println!("Combinations:\n{:#?}", combinations);
-
-    // *** Load up Booth Data ***
-    // this is the [booths; orders] matrix equivalent
-
+) -> Result<(BoothRecords, usize)> {
     let mut boothsfields = vec![
         String::from("ID"),
         String::from("Division"),
@@ -61,7 +47,7 @@ pub fn project(
         String::from("Latitude"),
         String::from("Longitude"),
     ];
-    boothsfields.append(&mut combinations.clone());
+    boothsfields.extend_from_slice(combinations);
     boothsfields.push(String::from("Total"));
 
     let mut booths: BoothRecords = BTreeMap::new();
@@ -96,10 +82,73 @@ pub fn project(
 
         booths.insert(divbooth, (boothmeta, boothvotes));
     }
+    Ok((booths, boothsfields.len()))
+}
+
+/// Actually write the output
+fn write_sa1_prefs(
+    sa1_prefs_path: &Path,
+    combinations: &[String],
+    outputn: BTreeMap<String, Vec<f64>>,
+    outlen: usize,
+) -> Result<()> {
+    // having summed it all up...
+
+    create_dir_all(
+        sa1_prefs_path
+            .parent()
+            .context("couldn't perform path conversion")?,
+    )?;
+    let mut sa1_wtr = csv::Writer::from_path(sa1_prefs_path)?;
+
+    let mut header = vec![String::from("SA1_id")];
+    header.extend_from_slice(&combinations);
+    header.push(String::from("Total"));
+    sa1_wtr
+        .write_record(header)
+        .context("error writing SA1_prefs header")?;
+
+    for (id, row) in &outputn {
+        let mut out: Vec<String> = Vec::with_capacity(outlen);
+        out.push(id.clone());
+        for i in row {
+            out.push(i.to_string());
+        }
+        sa1_wtr
+            .write_record(out)
+            .context("error writing SA1_prefs line")?;
+    }
+
+    sa1_wtr.flush().context("error finalising SA1_prefs")?;
+    Ok(())
+}
+
+pub fn project(
+    parties: &Parties,
+    state: StateAb,
+    year: &str,
+    npp_booths_path: &Path,
+    sa1_breakdown_path: &Path,
+    sa1_prefs_path: &Path,
+) -> Result<()> {
+    info!("\tProjecting results onto SA1s");
+
+    let combinations = {
+        // potential soundness issue: is this going to work out the same way?
+        // BTreeMap for Parties in general should fix that
+        let mut partykeys: Vec<&str> = Vec::new();
+        for k in parties.keys() {
+            partykeys.push(k);
+        }
+        group_combos(&partykeys)
+    };
+
+    // *** Load up NPP-Booth data ***
+    let (booths, outlen) = load_npp_booths(&combinations, npp_booths_path)?;
 
     // *** Load up SA1 data ***
     // This is the [sa1s; booths] matrix equivalent
-    // Since it's so sparse we
+    // Since it's so sparse we prefer a map to an array
 
     let mut sa1_rdr = csv::ReaderBuilder::new()
         .flexible(true)
@@ -109,14 +158,11 @@ pub fn project(
     let mut outputn: BTreeMap<String, Vec<f64>> = BTreeMap::new(); // Our numerical ultimate output. Indexed by ID
 
     let mut row = csv::StringRecord::new();
-
     while sa1_rdr.read_record(&mut row)? {
         let id = row
             .get(sfl("SA1_id"))
             .context("Missing SA1_id field in record")?
             .to_owned();
-
-        let divbooth = row[sfl("div_nm")].to_owned() + "_" + &row[sfl("pp_nm")];
 
         if row
             .get(sfl("state_ab"))
@@ -144,68 +190,34 @@ pub fn project(
             .and_then(|x| x.parse::<f64>().ok())
             .unwrap_or(0.0_f64);
 
-        // This scenario occurs when there are no formal Senate votes at a booth
-        // Thus they don't show up in the output of the previous stage
-        // And can be safely skipped here
-        if !&booths.contains_key(&divbooth) {
-            // eprintln!("wait a minute... {}, {}", &divbooth, sa1_booth_votes);
-            continue;
-        }
+        let divbooth = row[sfl("div_nm")].to_owned() + "_" + &row[sfl("pp_nm")];
 
-        let boothvotes = &booths
-            .get(&divbooth)
-            .with_context(|| format!("TOCTOU for {}", &divbooth))?
-            .1;
-        let boothtotal = boothvotes
-            .last()
-            .with_context(|| format!("No vote records for {}", &divbooth))?;
+        if let Some((_, boothvotes)) = &booths.get(&divbooth) {
+            // Rarely, there's no entry if no formal votes at a booth
+            // ... or if the prior checks aren't sufficient
+            let boothtotal = boothvotes
+                .last()
+                .with_context(|| format!("No vote records for {}", &divbooth))?;
 
-        let mut output_row = outputn
-            .get(&id)
-            .cloned()
-            .unwrap_or_else(|| vec![0.0_f64; combinations.len() + 1]);
+            let mut output_row = outputn
+                .get(&id)
+                .cloned()
+                .unwrap_or_else(|| vec![0.0_f64; combinations.len() + 1]);
 
-        if *boothtotal != 0.0_f64 {
-            for (i, w) in boothvotes.iter().enumerate() {
-                *output_row.get_mut(i).unwrap() += w * sa1_booth_votes / boothtotal;
-                // doing it in one go produces slightly different results to the Python,
-                // which is concerning...
+            if *boothtotal != 0.0_f64 {
+                for (i, w) in boothvotes.iter().enumerate() {
+                    *output_row.get_mut(i).unwrap() += w * sa1_booth_votes / boothtotal;
+                    // doing it in one go produces slightly different results to the Python,
+                    // which is concerning...
+                }
             }
+            outputn.insert(id, output_row);
         }
-
-        outputn.insert(id, output_row);
     }
 
-    // having summed it all up...
-    let outlen = boothsfields.len();
+    // Actually write the output
+    write_sa1_prefs(sa1_prefs_path, &combinations, outputn, outlen)?;
 
-    create_dir_all(
-        sa1_prefs_path
-            .parent()
-            .context("couldn't perform path conversion")?,
-    )?;
-    let mut sa1_wtr = csv::Writer::from_path(sa1_prefs_path)?;
-
-    let mut header = vec![String::from("SA1_id")];
-    #[allow(clippy::redundant_clone)]
-    header.append(&mut combinations.clone()); // trust me it's better this way
-    header.push(String::from("Total"));
-    sa1_wtr
-        .write_record(header)
-        .context("error writing SA1_prefs header")?;
-
-    for (id, row) in &outputn {
-        let mut out: Vec<String> = Vec::with_capacity(outlen);
-        out.push(id.clone());
-        for i in row {
-            out.push(i.to_string());
-        }
-        sa1_wtr
-            .write_record(out)
-            .context("error writing SA1_prefs line")?;
-    }
-
-    sa1_wtr.flush().context("error finalising SA1_prefs")?;
-    eprintln!("\t\tDone!");
+    info!("\t\tDone!");
     Ok(())
 }
