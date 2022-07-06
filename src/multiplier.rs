@@ -1,24 +1,26 @@
-//! The booths-to-SA1s projection phase.
+//! The booths-to-SA1s *projection* phase.
+//!   
+//! The AEC have given us a
+//! "this many people from this SA1 voted at this booth"
+//! spreadsheet. This uses Reps voter numbers, but we can
+//! simply scale slightly for Senate voter numbers.
+//!   
+//! We are basically performing a matrix product:
+//! `[sa1s; booths] * [booths; orders] = [sa1s; orders]`
+
+// This file corresponds to `SA1s_Multiplier.py`
+
 use super::booths::{group_combos, Parties};
 use super::utils::StateAb;
 use color_eyre::eyre::{bail, Context, ContextCompat, Result};
 use std::collections::BTreeMap;
 use std::fs::create_dir_all;
-/// This file corresponds to `SA1s_Multiplier.py`
-
-/// The AEC have given us a
-/// "this many people from this SA1 voted at this booth"
-/// spreadsheet. This is almost tailor made for projecting Senate results
-/// onto state electoral boundaries.
-
-/// We are basically performing a matrix product.
-/// [sa1s; booths] * [booths; orders] = [sa1s; orders]
-/// except that [sa1s; booths] is so sparse as to be represented a little differently.
 use std::path::Path;
 use tracing::info;
 
 /// Convert a header to a column index
 #[allow(non_camel_case_types)]
+#[repr(usize)]
 enum sfl {
     year = 0,
     state_ab = 1,
@@ -30,24 +32,18 @@ enum sfl {
     votes = 6,
 }
 
-type BoothRecords = BTreeMap<String, (Vec<String>, Vec<f64>)>;
+type BoothRecords = BTreeMap<String, Vec<f64>>;
 
-/// *** Load up NPP Booth Data ***
-/// this is the [booths; orders] matrix equivalent
-/// Also, we calculate the output length here for reasons
-fn load_npp_booths(
-    combinations: &[String],
-    npp_booths_path: &Path,
-) -> Result<(BoothRecords, usize)> {
-    let mut boothsfields = vec![
-        String::from("ID"),
-        String::from("Division"),
-        String::from("Booth"),
-        String::from("Latitude"),
-        String::from("Longitude"),
-    ];
-    boothsfields.extend_from_slice(combinations);
-    boothsfields.push(String::from("Total"));
+/// Load up NPP Booth Data  
+///   
+/// this is the [booths; orders] matrix equivalent  
+/// Also, we calculate the output length here for reasons  
+fn load_npp_booths(combinations: &[String], npp_booths_path: &Path) -> Result<BoothRecords> {
+    // Five fixed fields at the start, plus all the combinations, plus a total at the end:
+    // ID, Division, Booth, Latitude, Longitude, {combinations ...}, Total
+    // we don't actually care about ID, Latitude or Longitude,
+    // as IDs have been known to be inconsistent across files,
+    // and Lat/Lon are for the booths, not the SA1s
 
     let mut booths: BoothRecords = BTreeMap::new();
 
@@ -56,32 +52,23 @@ fn load_npp_booths(
         .has_headers(true)
         .from_path(npp_booths_path)?;
 
-    // Maybe we can deserialize to boothsfields?
-    // That's what we want to do...
-    // well, we can mostly do that.
-
     for record in booths_rdr.records() {
         let row = record?;
         let divbooth = row[1].to_owned() + "_" + &row[2];
-        let mut boothmeta: Vec<String> = Vec::with_capacity(5);
 
-        for i in 0..5 {
-            boothmeta.push(row[i].to_string());
-        }
+        let mut boothvotes: Vec<f64> = Vec::with_capacity(combinations.len() + 1);
 
-        let mut boothvotes: Vec<f64> = Vec::with_capacity(combinations.len());
-
-        for i in 5..row.len() {
-            let val = row[i].parse::<f64>().unwrap_or(0.0);
+        for i in row.iter().skip(5) {
+            let val = i.parse::<f64>().unwrap_or(0.0);
             boothvotes.push(val);
         }
-        if row.len() < boothsfields.len() {
-            boothvotes.resize(boothsfields.len(), 0.0);
+        if boothvotes.len() < combinations.len() + 1 {
+            boothvotes.resize(combinations.len() + 1, 0.0);
         }
 
-        booths.insert(divbooth, (boothmeta, boothvotes));
+        booths.insert(divbooth, boothvotes);
     }
-    Ok((booths, boothsfields.len()))
+    Ok(booths)
 }
 
 /// Actually write the output
@@ -89,9 +76,9 @@ fn write_sa1_prefs(
     sa1_prefs_path: &Path,
     combinations: &[String],
     outputn: BTreeMap<String, Vec<f64>>,
-    outlen: usize,
 ) -> Result<()> {
     // having summed it all up...
+    use std::iter::once;
 
     create_dir_all(
         sa1_prefs_path
@@ -100,19 +87,16 @@ fn write_sa1_prefs(
     )?;
     let mut sa1_wtr = csv::Writer::from_path(sa1_prefs_path)?;
 
-    let mut header = vec![String::from("SA1_id")];
-    header.extend_from_slice(&combinations);
-    header.push(String::from("Total"));
+    let header = once("SA1_id")
+        .chain(combinations.iter().map(String::as_str))
+        .chain(once("Total"));
+
     sa1_wtr
         .write_record(header)
         .context("error writing SA1_prefs header")?;
 
-    for (id, row) in &outputn {
-        let mut out: Vec<String> = Vec::with_capacity(outlen);
-        out.push(id.clone());
-        for i in row {
-            out.push(i.to_string());
-        }
+    for (id, row) in outputn {
+        let out = once(id).chain(row.iter().map(ToString::to_string));
         sa1_wtr
             .write_record(out)
             .context("error writing SA1_prefs line")?;
@@ -122,6 +106,7 @@ fn write_sa1_prefs(
     Ok(())
 }
 
+/// Perform the projection
 pub fn project(
     parties: &Parties,
     state: StateAb,
@@ -133,7 +118,7 @@ pub fn project(
     info!("\tProjecting results onto SA1s");
 
     let combinations = {
-        // potential soundness issue: is this going to work out the same way?
+        // potential soundness issue: is this going to work out the same order?
         // BTreeMap for Parties in general should fix that
         let mut partykeys: Vec<&str> = Vec::new();
         for k in parties.keys() {
@@ -143,7 +128,7 @@ pub fn project(
     };
 
     // *** Load up NPP-Booth data ***
-    let (booths, outlen) = load_npp_booths(&combinations, npp_booths_path)?;
+    let booths = load_npp_booths(&combinations, npp_booths_path)?;
 
     // *** Load up SA1 data ***
     // This is the [sa1s; booths] matrix equivalent
@@ -191,7 +176,7 @@ pub fn project(
 
         let divbooth = row[sfl::div_nm as usize].to_owned() + "_" + &row[sfl::pp_nm as usize];
 
-        if let Some((_, boothvotes)) = &booths.get(&divbooth) {
+        if let Some(boothvotes) = booths.get(&divbooth) {
             // Rarely, there's no entry if no formal votes at a booth
             // ... or if the prior checks aren't sufficient
             let boothtotal = boothvotes
@@ -215,7 +200,7 @@ pub fn project(
     }
 
     // Actually write the output
-    write_sa1_prefs(sa1_prefs_path, &combinations, outputn, outlen)?;
+    write_sa1_prefs(sa1_prefs_path, &combinations, outputn)?;
 
     info!("\t\tDone!");
     Ok(())
