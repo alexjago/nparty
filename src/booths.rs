@@ -113,7 +113,9 @@ pub struct BoothRecord {
     Longitude: String, // and now we don't have to care about deserialising them either
 }
 
+/// A (Division, Booth) combination
 pub type DivBooth = (String, String);
+/// A map from the party name to a list of (pseudo)candidates
 pub type Parties = IndexMap<String, Vec<String>>;
 
 // TODO: make this take Read objects instead of paths.
