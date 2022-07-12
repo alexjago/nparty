@@ -7,3 +7,6 @@ test/
 dl_folder/
 performance/
 .DS_Store
+*.svg
+*.csv
+
