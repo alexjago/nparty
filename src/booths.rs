@@ -225,8 +225,6 @@ pub fn booth_npps(
     // The 2019 format is that there are a few fixed headers ...
     // and then a field for each [pseudo]candidate
 
-    // faster! https://blog.burntsushi.net/csv/#amortizing-allocations
-
     let mut prefs_rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .escape(Some(b'\\')) //.trim(csv::Trim::All)
@@ -243,6 +241,7 @@ pub fn booth_npps(
 
     // 2022 lack-of-quoting problems
     let prefs_headers_fixed = fix_prefs_headers(&prefs_headers, above_start);
+    let cands_count = (&prefs_headers_fixed).len() - above_start;
 
     for i in (above_start + 1)..prefs_headers_fixed.len() {
         // The first ticket is labelled "A" and there are two candidates per ticket.
@@ -269,8 +268,12 @@ pub fn booth_npps(
     let cand_nums = cand_nums; // make immutable now
 
     // set up some lookups...
+    // A mapping between a party ID and a (pseudo)candidate number
+    // (such numbers are relative column indexes)
     let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+    // A mapping between a party ID and an ATL ticket number
     let mut groups_above: HashMap<usize, Vec<usize>> = HashMap::new();
+    // A mapping between a party ID and a BTL candidate number
     let mut groups_below: HashMap<usize, Vec<usize>> = HashMap::new();
 
     for (party, cand_list) in parties.iter() {
@@ -307,23 +310,20 @@ pub fn booth_npps(
     trace!("ATL Groups: {:?}", groups_above);
     trace!("BTL Groups: {:?}", groups_below);
 
-    eprintln!(); // still a normal eprintln for reasons
+    eprintln!(); // still a normal eprintln for progress-jump reasons
 
-    // At long last! It is time to actually go over the rows!
+    /* ***** Start of main iteration ***** */
 
-    // this is where we're going to store all the things
+    // Store all the things! DivBooth : rest of the derived columns
     let mut booth_counts: HashMap<DivBooth, Vec<usize>> = HashMap::new();
 
-    let cands_count = (&prefs_headers_fixed).len() - above_start;
-
-    let prefs_rdr_iter = prefs_rdr.records();
     let mut progress: usize = 0;
 
-    // We won't do a "magic" deserialisation as only a few initial columns
-    // are the same between different ballot files
-    for row in prefs_rdr_iter {
-        let record = row?;
-
+    // We are now performing amortized allocation
+    // <https://blog.burntsushi.net/csv/#amortizing-allocations>
+    let mut record = csv::StringRecord::new();
+    while prefs_rdr.read_record(&mut record)? {
+        // String interning in action
         let divnm = interner.get_or_intern(&record[1]);
         let boothnm = interner.get_or_intern(&record[2]);
 
@@ -352,7 +352,9 @@ pub fn booth_npps(
                                                      // ... and someone plays *extreme* silly buggers
 
             for v in record.iter().skip(bsa) {
-                match v.trim() {
+                match v {
+                    // Can we really rely on the lack of whitespace? We may need to trim() again
+                    // Not doing it does save like 0.1 seconds per run though, that's 5%
                     "1" => btl_counts[0] += 1,
                     "2" => btl_counts[1] += 1,
                     "3" => btl_counts[2] += 1,
@@ -378,13 +380,15 @@ pub fn booth_npps(
         let mut bests: Vec<(usize, usize)> = Vec::with_capacity(partykeys.len());
 
         for (party_num, candidate_nums) in groups_which.iter() {
-            // Manually iterate over the candidates and get the best preferenced.
-            // There's unlikely to be more than about 13 per party, so O(n) is OK.
+            // For each party, iterate over its candidates and get the best-preferenced.
             let mut cur_best: usize = cands_count;
             for i in candidate_nums {
+                // ^^ candidate_nums *should* be disjoint across iterations...
                 if let Some(x) = record.get(i + above_start - 1) {
                     // ^^ always check: is this the right offset?
                     if let Ok(bal) = x.trim().parse::<usize>() {
+                        // ^^ Many if not most entries are empty - these will produce
+                        //      parse errors, so the if-let filters that
                         if bal < cur_best {
                             cur_best = bal;
                         }
@@ -395,6 +399,7 @@ pub fn booth_npps(
                 bests.push((cur_best, *party_num));
             }
         }
+
         // sort to order them
         bests.sort_unstable();
         let order: Vec<usize> = bests.iter().map(|x| x.1).collect();
@@ -417,7 +422,6 @@ pub fn booth_npps(
             );
         }
     }
-
     // and we are done with the main task!
     info!(
         "{}\t\tPreferencing complete: {} ballots ({} were BTL)",
@@ -431,6 +435,8 @@ pub fn booth_npps(
         interner.len(),
         u16::MAX
     );
+
+    /* ***** End of main iteration ***** */
 
     // Initially, the special votes are split up into e.g. POSTAL_1 through POSTAL_8
     // This isn't useful for us, so we'll aggregate them.
@@ -534,7 +540,11 @@ pub fn booth_npps(
 }
 
 /*
-    *** Performance and string interning ***
+    Performance Improvement Notes
+    =============================
+
+    String Interning
+    ----------------
 
     Because PollingPlaceID and VoteCollectionPointID aren't the same thing,
     we need to use (Division, Booth) as our key. This poses a bit of an issue:
@@ -547,9 +557,7 @@ pub fn booth_npps(
     our Strings for Symbols (which are just uints in disguise).
     This also has HashMap benefits, so we'll have to test non-interned HashMaps
 
-    *** Results ***
-
-    Relative result notes from `cargo-flamegraph`, main datastructures are HashMaps
+    Relative result notes from `cargo-flamegraph`:
 
     * with interning we seem to be running at about 4% of runtime on interning?
     * without it we spend about 4% of time on alloc::borrow::ToOwned which doesn't show up with interning
@@ -566,5 +574,32 @@ pub fn booth_npps(
 
     So interning is faster, but really not by much. A larger saving was just in switching to HashMap.
     Still, we got a 17% speedup for this phase all told and that's pretty good.
+
+    Switching to amortized allocations
+    ----------------------------------
+
+    * It's notably faster. With the same setup as above, we get mean 2.44, max 2.47, min 2.41 - a 22% speedup.
+
+    "Parsing the row up-front" vs. "Parsing the row as-needed"
+    ----------------------------------------------------------
+
+    Currently, we parse individual entries in the row as-needed.
+    * When BTL-checking we need to iterate over (most of) the row and do string comparisons
+    ** (cost of that vs cost of parsing unclear, probably not worth it right now)
+    * For determining "bests" we need to get as many entries as there are candidates
+    ** assuming no duplication across groups, that's only O(n) anyway
+    * The other factor is that many entries in the row are actually nulls; they're empty.
+    ** We'd want to substitute all of those for some too-large number if we parsed up-front.
+
+    Conclusion: parsing-as-needed is probably superior.
+
+    Extension: what if we switch the main booths reader to a ByteRecord?
+    We'll need to parse to strings to get
+    * Division name
+    * Booth name
+    * Candidate preference for bests
+    We can potentially parsing for BTL - compare bytes, not strings.
+
+    Result: this was actually slightly slower!
 
 */
