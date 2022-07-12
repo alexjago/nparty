@@ -1,4 +1,4 @@
-//! The SA1s-to-districts **combination** phase.
+//! The SA1s-to-districts *combination* phase.
 //!   
 //! (1) Take SA1-by-SA1 NPP data  
 //! (2) Take SA1 population & district split data  
@@ -6,6 +6,7 @@
 //! (4) Also split (3) according to (2) where necessary/available  
 //! (5) Aggregate (4) by district.  
 //! (6) Write to file(s)  
+use super::utils::PrefsMap;
 use color_eyre::eyre::{Context, ContextCompat, Result};
 use csv::{StringRecord, StringRecordsIntoIter};
 use indexmap::IndexMap;
@@ -16,11 +17,10 @@ use std::io::{self, Write};
 use std::path::Path;
 use tracing::info;
 
-type Sa1Prefs = BTreeMap<String, Vec<f64>>;
-
 /// Load up SA1 NPP data (step 1)
+///
 /// Returns both the data keyed by the first column (SA1 ID), and the file headers
-fn load_sa1_prefs(sa1_prefs_path: &Path) -> Result<(Sa1Prefs, StringRecord)> {
+fn load_sa1_prefs(sa1_prefs_path: &Path) -> Result<(PrefsMap, StringRecord)> {
     let mut sa1_prefs: BTreeMap<String, Vec<f64>> = BTreeMap::new();
 
     let mut sa1_prefs_rdr = csv::ReaderBuilder::new()
@@ -55,7 +55,7 @@ fn load_sa1_prefs(sa1_prefs_path: &Path) -> Result<(Sa1Prefs, StringRecord)> {
 
 type Sa1DistsRdr = StringRecordsIntoIter<File>;
 
-/// 2a. Load up SA1 to district data as an iterator over a file
+/// 2a. Load up SA1 to district data (as an iterator over a file)
 fn get_sa1_districts(sa1_districts_path: &Path) -> Result<Sa1DistsRdr> {
     let rdr = csv::ReaderBuilder::new()
         .flexible(true)
@@ -72,9 +72,12 @@ fn get_sa1_districts(sa1_districts_path: &Path) -> Result<Sa1DistsRdr> {
 }
 
 /// 6a. Output CSV to `npp_dists_path`
+///
+/// The format is the district name, then the same columns
+/// (from `None` through `Total`) as in `sa1_prefs_path`.
 fn write_aggregate_csv(
     npp_dists_path: &Path,
-    districts: &Sa1Prefs,
+    districts: &PrefsMap,
     header: &[String],
 ) -> Result<()> {
     create_dir_all(
@@ -107,9 +110,21 @@ fn write_aggregate_csv(
 }
 
 /// 6b. Output to `npp_dists_path` (but as .json rather than .csv)
+///
+/// This JSON includes "CSV-style" district results (values are given
+/// as arrays, with field names specified in corresponding order) and
+/// *also* includes information about the parties in the distribution.
+///
+///  ```json
+///  {
+///     parties : {abbr: full name},
+///     field_names: [...],
+///     data: {district: [values]}
+/// }
+///  ```
 fn write_aggregate_js(
     npp_dists_path: &Path,
-    districts: &Sa1Prefs,
+    districts: &PrefsMap,
     parties: &IndexMap<String, Vec<String>>,
     header: &[String],
 ) -> Result<()> {
@@ -137,8 +152,10 @@ fn write_aggregate_js(
 }
 
 /// Perform the actual summation (steps 2b through 5)
+///
+/// Returns a map of district names to summed NPP values
 fn make_districts(
-    sa1_prefs: &Sa1Prefs,
+    sa1_prefs: &PrefsMap,
     sa1_dists_rdr: Sa1DistsRdr,
 ) -> Result<BTreeMap<String, Vec<f64>>> {
     // 2b. Load up SA1 to district data

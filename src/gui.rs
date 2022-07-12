@@ -25,12 +25,14 @@ use crate::app::CliCommands;
 #[clap(global_setting(AppSettings::PropagateVersion))]
 #[clap(global_setting(AppSettings::UseLongFormatForHelpSubcommand))]
 pub struct Gui {
-    // This is different to app::Cli because we have constant verbosity here
+    // This is different to app::Cli because we have a fixed verbosity here
     #[clap(subcommand)]
     pub command: CliCommands,
 }
 
 /// Run the GUI.
+///
+/// Log level is set to INFO.
 fn main() -> color_eyre::eyre::Result<()> {
     // install color_eyre with a null theme
     color_eyre::config::HookBuilder::new()

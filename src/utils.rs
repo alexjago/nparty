@@ -15,12 +15,20 @@ use super::term;
 use SeekFrom::Start;
 
 pub use ehttp::Response;
-pub type BallotNumber = u32; // if you have more than 4 billion candidates on the ballot, something has gone very wrong
+
+/// A number.
+///
+/// If you have more than 4 billion candidates on the ballot, something has gone very wrong.
+pub type BallotNumber = u32;
+
+/// A ticket code. These follow "Excel ordering": A, B, C, ..., Z, AA, AB, ...
 pub type TicketString = String; // is this really needed? eh
 
-// deprecate printv in favour of using `log`
-
-// The next section converts number_to_ticket and ticket_to_number
+/// A map with each entry representing a row of results.
+///
+/// * the keys are typically either a `{division}_{booth}` portmanteau or an SA1 ID.
+/// * the values are a sequence of preference results in the same order that [`crate::booths::group_combos`] would give.
+pub type PrefsMap = std::collections::BTreeMap<String, Vec<f64>>;
 
 pub trait ToTicket {
     fn to_ticket(self) -> TicketString;
@@ -60,6 +68,8 @@ pub trait ToBallotNumber {
 
 impl ToBallotNumber for TicketString {
     /// Takes a ticket string like "AE" and converts it to an integer like `31`
+    ///
+    /// N.B. `UG` is not handled specially.
     fn to_number(self) -> BallotNumber {
         let mut res = 0;
         let places = self.char_indices().count();
@@ -105,7 +115,7 @@ impl PrettifyNumber for BallotNumber {
     }
 }
 
-// In the Python, `read_candidates(candsfile)` does the following:
+// In the prior Python project, `read_candidates(candsfile)` does the following:
 
 // Generate a dictionary of candidate data from the supplied CSV.
 //    `candsfile` must be a file-like object.
@@ -627,8 +637,10 @@ pub fn get_zip_writer_to_path(
     Ok(outfile)
 }
 
-// Credit to /u/Ophekkis
-// https://www.reddit.com/r/rust/comments/fyjmbv/n00b_question_how_to_get_user_input/fn0d5va/
+/// Get user input live, given a prompt, like the Python function of the same name.
+///  
+/// Credit to /u/Ophekkis
+/// <https://www.reddit.com/r/rust/comments/fyjmbv/n00b_question_how_to_get_user_input/fn0d5va/>
 pub fn input(prompt: &str) -> std::io::Result<String> {
     let mut stdout = stdout();
     write!(&mut stdout, "{}", prompt)?;

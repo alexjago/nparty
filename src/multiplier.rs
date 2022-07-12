@@ -11,7 +11,7 @@
 // This file corresponds to `SA1s_Multiplier.py`
 
 use super::booths::{group_combos, Parties};
-use super::utils::StateAb;
+use super::utils::{PrefsMap, StateAb};
 use color_eyre::eyre::{bail, Context, ContextCompat, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::create_dir_all;
@@ -31,12 +31,6 @@ enum sa1col {
     pp_nm = 5,
     votes = 6,
 }
-
-/// A map with each entry representing a row of results.
-///
-/// * the keys are typically either a `{division}_{booth}` portmanteau or an SA1 ID.
-/// * the values are a sequence of preference results in the same order that [`group_combos`] would give.
-type PrefsMap = BTreeMap<String, Vec<f64>>;
 
 /// Load up NPP Booth Data from file.
 ///
