@@ -9,12 +9,15 @@
 #![warn(clippy::cargo)]
 #![allow(clippy::cast_possible_truncation)]
 // reason = "truncations are all collection-lengths (usize) to u32, where u32 is already large for the relevant problem domain"
-#![allow(clippy::multiple_crate_versions)] // reason = "transitive dependencies"
-#![allow(clippy::too_many_lines)] // reason = "mostly translated functions from previous version; TODO: refactor"
+#![allow(clippy::multiple_crate_versions)]
+// reason = "transitive dependencies"
+// #![allow(clippy::too_many_lines)] // reason = "mostly translated functions from previous version; TODO: refactor"
 #![allow(clippy::cognitive_complexity)] // reason = "mostly translated functions from previous version; TODO: refactor"
 #![allow(clippy::items_after_statements)] // reason = "items defined adjacent to use"
-#![allow(clippy::use_self)] // reason = "derive-related bugs"
-                            // One known false positive, but an item specific allow doesn't seem to work
+#![allow(clippy::use_self)]
+// reason = "derive-related bugs"
+// One known false positive, but an item specific allow doesn't seem to work
+#![allow(clippy::future_not_send)] // we aren't multi-thread and Clippy REALLY doesn't like this
 
 // OK on with the show
 #[macro_use]

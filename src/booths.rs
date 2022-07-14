@@ -1,4 +1,4 @@
-//! The n-party-preferred distribution phase.
+//! The n-party-preferred *distribution* phase.
 /// We want to reduce each unique preference sequence to some ordering
 ///    of each of the parties. For example, for four parties there are 65 orderings:
 ///   `(0!) + (4 * 1!) + (6 * 2!) + (4 * 3!) + (4!)`
@@ -6,12 +6,12 @@
 /// In fact, there are even more orderings (voters might interleave candidates)
 /// but we will consider the most-preferred candidate from each party as
 /// representing it (e.g. a vote `A1 > B1 > B2 > B3 > A2 > A3` as `A > B`).
-use color_eyre::eyre::{bail, eyre, Context, ContextCompat, Result};
+use color_eyre::eyre::{eyre, Context, ContextCompat, Result};
 use color_eyre::Section;
 use factorial::Factorial;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::create_dir_all;
 use std::path::Path;
 use string_interner::{backend::StringBackend, symbol::SymbolU16, StringInterner};
@@ -38,8 +38,10 @@ const PREFS_FIELD_NAMES: [&str; 6] = [
     "Paper No",
 ];
 
+/// Special votes will contain one of these strings in the booth name
 const NON_BOOTH_CONVERT: [&str; 4] = ["ABSENT", "POSTAL", "PRE_POLL", "PROVISIONAL"];
 
+/// Convert the name of a "special" vote
 fn non_booth_convert(input: &str) -> &str {
     match input {
         "ABSENT" => "Absent",
@@ -72,7 +74,7 @@ pub fn factsum(input: usize) -> usize {
 ///
 /// (i.e. the sequence of permutations of the groups,
 /// from length 0 to length N)
-pub fn group_combos(groups: &[&str]) -> Vec<String> {
+pub fn group_combos(groups: &[&str]) -> Combinations {
     let mut combinations = Vec::with_capacity(factsum(groups.len()));
     combinations.push(String::from("None"));
 
@@ -84,28 +86,6 @@ pub fn group_combos(groups: &[&str]) -> Vec<String> {
     }
 
     combinations
-}
-
-/// A "combo tree" is a map of the indexes of party orderings.  
-/// Suppose we had N parties labelled as 0 through N-1. This allows us to
-/// take an *ordering* of those parties, say `[0, 1]` and get the corresponding
-/// index in the output of [`group_combos`]. In turn, that index can stand for
-/// the ordering (which is itself a reduction of the ballot).
-///
-/// tl;dr this function exists to avoid a *lot* of string allocations.
-pub fn make_combo_tree(groups_count: usize) -> HashMap<Vec<usize>, usize> {
-    let mut output: HashMap<Vec<usize>, usize> = HashMap::new();
-    output.insert(vec![], 0_usize);
-    let mut c: usize = 1;
-    for r in 1..=groups_count {
-        for i in (0..groups_count).permutations(r) {
-            let combo: Vec<usize> = i.into_iter().collect();
-            output.insert(combo, c);
-            c += 1;
-        }
-    }
-
-    output
 }
 
 /// This represents a row in the `polling_places` file
@@ -136,6 +116,37 @@ type DivBooth = (SymbolU16, SymbolU16);
 /// A map from the party name to a list of (pseudo)candidates of that party.
 pub type Parties = IndexMap<String, Vec<String>>;
 
+/// The headers, essentially
+pub type Combinations = Vec<String>;
+
+/// A mapping between a party ID and a (pseudo)candidate number
+/// (such numbers are relative column indexes)
+type Groups = HashMap<usize, Vec<usize>>;
+
+/// A mapping from an order of [`Groups`] keys, to an index into [`Combinations`].
+///
+/// Suppose we had N parties labelled as 0 through N-1. This allows us to
+/// take an *ordering* of those parties, say `[0, 1]` and get the corresponding
+/// index in the output of [`group_combos`]. In turn, that index can stand for
+/// the ordering (which is itself a reduction of the ballot).
+type ComboTree = HashMap<Vec<usize>, usize>;
+
+/// It doesn't matter what the group ordering is as long as it's consistent...
+fn make_combo_tree(groups_count: usize) -> ComboTree {
+    let mut output: HashMap<Vec<usize>, usize> = HashMap::new();
+    output.insert(vec![], 0_usize);
+    let mut c: usize = 1;
+    for r in 1..=groups_count {
+        for i in (0..groups_count).permutations(r) {
+            let combo: Vec<usize> = i.into_iter().collect();
+            output.insert(combo, c);
+            c += 1;
+        }
+    }
+
+    output
+}
+
 /// Perform the distribution over a specified set of parties.
 ///
 /// * `formal_prefs_path`: the input preferences (one row per ballot)
@@ -150,7 +161,214 @@ pub fn booth_npps(
 ) -> Result<()> {
     // TODO: make this take Read objects instead of paths.
     //       otherwise it'll never work in WASM.
+
+    // String Interning: because u16s are much cheaper keys than strings are
+    let mut interner = StringInterner::<StringBackend<SymbolU16>>::new();
+
+    info!("\tLoading polling places and candidates");
+    let booths = load_polling_places(state, polling_places_path, &mut interner)?;
+
+    // The 2019 format is that there are a few fixed headers ... and then a field for each [pseudo]candidate
+    let mut prefs_rdr = csv::ReaderBuilder::new()
+        .flexible(true)
+        .escape(Some(b'\\'))
+        // .trim(csv::Trim::Fields) // Trimming at this stage more than doubles run time
+        .from_reader(open_csvz_from_path(formal_prefs_path)?);
+
+    let prefs_headers = prefs_rdr.headers()?.clone();
+    trace!("\nNo actual preferences processed yet, but we successfully opened the zipfile and the raw headers look like this:\n{:#?}", prefs_headers);
+
+    let above_start = PREFS_FIELD_NAMES.len();
+    // 2022 lack-of-quoting problems
+    let prefs_headers_fixed = fix_prefs_headers(&prefs_headers, above_start);
+
+    /* ***** Get candidate/party/group info ***** */
+    let (combinations, below_start, groups_above, groups_below) =
+        make_candidate_info(parties, &prefs_headers_fixed, above_start)?;
+
+    let mut below_groups: Vec<usize> = vec![usize::MAX; prefs_headers_fixed.len()];
+    for (g, v) in &groups_below {
+        for c in v {
+            below_groups[*c + above_start - 1] = *g;
+        }
+    }
+    // eprintln!("groups_below: {:?}", groups_below);
+    // eprintln!("below_groups: {:?}", below_groups);
+
+    /* ***** Start of main iteration ***** */
     info!("\tDistributing Preferences");
+    eprintln!(); // still a normal eprintln for progress-jump reasons
+
+    // Store all the things! DivBooth : rest of the derived columns
+    let mut booth_counts: HashMap<DivBooth, Vec<usize>> = HashMap::new();
+    let mut progress: usize = 0; // Diagnostics
+    let mut btl_count: usize = 0; // Diagnostics
+
+    // Hoists
+    let mut bests: Vec<(usize, usize)> =
+        Vec::with_capacity(groups_below.len().max(groups_above.len()));
+    let mut order: Vec<usize> = Vec::with_capacity(bests.len());
+    let mut record = csv::StringRecord::new(); // Performance: <https://blog.burntsushi.net/csv/#amortizing-allocations>
+    while prefs_rdr.read_record(&mut record)? {
+        // String interning in action
+        let divnm = interner.get_or_intern(&record[1]);
+        let boothnm = interner.get_or_intern(&record[2]);
+        if (&record[1]).starts_with("---") {
+            // ^^ This conditional might be inverted for testing; 2019+ files do NOT contain a `---` line.
+            return Result::Err(eyre!("Preferences file is in the 2016 format."))
+                .suggestion("Upgrade the file to the 2019+ format with:\n\tnparty upgrade prefs");
+        }
+        /*
+        // First we must determine if it's ATL or BTL, then select appropriate candidates.
+        let is_btl: bool = check_btl(&record, below_start);
+        btl_count += if is_btl { 1 } else { 0 };
+        let groups_which = if is_btl { &groups_below } else { &groups_above };
+
+        // Next, actually distribute the preference.
+        let pref_idx_old = distribute_preference(
+            &record,
+            groups_which,
+            &combo_tree,
+            above_start,
+            prefs_headers_fixed.len() - above_start,
+            &mut bests,
+            &mut order,
+        );
+        */
+
+        let pref_idx = handle_below(
+            &record,
+            below_start,
+            &below_groups,
+            &mut bests,
+            &mut order,
+            groups_below.len(),
+            &mut btl_count,
+        )
+        .unwrap_or_else(|| {
+            distribute_preference(
+                &record,
+                &groups_above,
+                // &combo_tree,
+                above_start,
+                prefs_headers_fixed.len() - above_start,
+                &mut bests,
+                &mut order,
+            )
+        });
+
+        // if pref_idx != pref_idx_old {
+        //     panic!(
+        //         "Difference in result: old was {} but new is {} on iteration{}\n{}\nbests: {:?}",
+        //         combinations[pref_idx_old],
+        //         combinations[pref_idx],
+        //         progress,
+        //         record
+        //             .iter()
+        //             .zip(prefs_headers_fixed)
+        //             .filter(|(v, _)| !v.is_empty())
+        //             .map(|(v, k)| format!("{}\t{}\n", k, v))
+        //             .collect::<String>(),
+        //         bests
+        //     );
+        // }
+
+        // ... and store.
+        let divbooth: DivBooth = (divnm, boothnm);
+        let booth = booth_counts
+            .entry(divbooth)
+            .or_insert_with(|| vec![0_usize; combinations.len()]);
+        booth[pref_idx] += 1;
+
+        progress += 1;
+        if progress % 100_000 == 0 {
+            trace!("{:?}", record);
+            info!(
+                "{}\t\tPreferencing progress: {} ballots",
+                ttyjump(),
+                progress
+            );
+        }
+    }
+
+    info!(
+        "{}\t\tPreferencing complete: {} ballots ({} were BTL)",
+        ttyjump(),
+        progress,
+        btl_count
+    );
+    trace!(
+        "Interned {} strings, with capacity for {}.",
+        interner.len(),
+        u16::MAX
+    );
+    /* ***** End of main iteration ***** */
+
+    info!("\t\tAggregating Absents, Postals, Prepolls & Provisionals");
+    let division_specials = aggregate_specials(&mut booth_counts, &combinations, &interner);
+
+    info!("\t\tWriting File");
+    write_output(
+        npp_booths_path,
+        &combinations,
+        &booth_counts,
+        division_specials,
+        &booths,
+        &interner,
+    )
+}
+
+/// Load the polling places data from a path
+#[inline(never)]
+pub fn load_polling_places(
+    state: StateAb,
+    polling_places_path: &Path,
+    interner: &mut StringInterner<StringBackend<SymbolU16>>,
+) -> Result<HashMap<DivBooth, BoothRecord>> {
+    // this is now just for actual booth data
+    // For some gods-forsaken reason, the PollingPlaceID is not the Vote Collection Point ID
+    // The only consistent identifier is ({Division}, {Booth})
+    let mut booths: HashMap<DivBooth, BoothRecord> = HashMap::new();
+
+    // OK, let's figure out polling places
+    let mut pp_rdr = csv::ReaderBuilder::new()
+        .flexible(true)
+        .has_headers(false)
+        .from_path(polling_places_path)?;
+    // 2019 problems: there's a pre-header line
+    // we need to skip it, and we're going to do so manually.
+
+    let pp_rdr_iter = pp_rdr.records();
+    let mut row_count: usize = 0;
+
+    for result in pp_rdr_iter.skip(3) {
+        row_count += 1;
+        let record: BoothRecord = result?.deserialize(None)?;
+        if record.State != state {
+            continue;
+        }
+        let division_nm = interner.get_or_intern(record.DivisionNm.clone());
+        let booth_nm = interner.get_or_intern(record.PollingPlaceNm.clone());
+        let dvb = (division_nm, booth_nm);
+        booths.insert(dvb, record);
+    }
+    trace!("Loaded {} polling places", row_count - 2);
+    Ok(booths)
+}
+
+/// Assemble all the candidate information from the [`Parties`] and the pref file headers.
+/// Returns FIVE items:
+/// 0. All the group name [`Combinations`]
+/// 1. The [`ComboTree`] that acts as a LUT to column indexes in (0);
+/// 2. The (absolute) starting index of the BTL candidates in each ballot record
+/// 3. The ATL [`Groups`]
+/// 4. The BTL [`Groups`]
+#[inline(never)]
+pub fn make_candidate_info(
+    parties: &Parties,
+    prefs_headers_fixed: &[String],
+    above_start: usize,
+) -> Result<(Combinations, usize, Groups, Groups)> {
     let mut partykeys = Vec::with_capacity(parties.len());
     for i in parties.keys() {
         partykeys.push(i.as_str());
@@ -176,96 +394,26 @@ pub fn booth_npps(
             .join("\n")
     );
 
-    // this is now just for actual booth data
-    // For some gods-forsaken reason, the PollingPlaceID is not the Vote Collection Point ID
-    // The only consistent identifier is ({Division}, {Booth})
-    let mut interner = StringInterner::<StringBackend<SymbolU16>>::new();
-    let mut booths: HashMap<DivBooth, BoothRecord> = HashMap::new();
-
-    // but here we use Serde
-
-    // OK, let's figure out polling places
-    let mut pp_rdr = csv::ReaderBuilder::new()
-        .flexible(true)
-        .has_headers(false)
-        .from_path(polling_places_path)?;
-    // 2019 problems: there's a pre-header line
-    // we need to skip it, and we're going to do so manually.
-
-    let pp_rdr_iter = pp_rdr.records();
-    let mut row_count: usize = 0;
-    let mut btl_count: usize = 0;
-
-    for result in pp_rdr_iter {
-        row_count += 1;
-        if row_count < 3 {
-            continue;
-        }
-
-        // if row_count > 22 {
-        //     trace!("{:#?}", booths);
-        //     break;
-        // }
-
-        let record: BoothRecord = result?.deserialize(None)?; //
-                                                              // do actual-useful things with record
-        if record.State != state {
-            continue;
-        }
-        let division_nm = interner.get_or_intern(record.DivisionNm.clone());
-        let booth_nm = interner.get_or_intern(record.PollingPlaceNm.clone());
-        let dvb = (division_nm, booth_nm);
-        booths.insert(dvb, record);
-    }
-
-    trace!("Loaded {} polling places", row_count - 2);
-
-    // ***** Iterating over Preferences *****
-
-    // The 2019 format is that there are a few fixed headers ...
-    // and then a field for each [pseudo]candidate
-
-    let mut prefs_rdr = csv::ReaderBuilder::new()
-        .flexible(true)
-        .escape(Some(b'\\')) //.trim(csv::Trim::All)
-        .from_reader(open_csvz_from_path(formal_prefs_path)?);
-
-    let prefs_headers = prefs_rdr.headers()?.clone();
-    trace!("\nNo actual preferences processed yet, but we successfully opened the zipfile and the raw headers look like this:\n{:#?}", prefs_headers);
-
-    // Now we figure out a bunch of things.
-    // We index fields by "TICKETCODE:LASTNAME Given Names"
-
-    let above_start = PREFS_FIELD_NAMES.len(); // relative to in general
-    let mut below_start: usize = 0; // relative to atl_start
-
-    // 2022 lack-of-quoting problems
-    let prefs_headers_fixed = fix_prefs_headers(&prefs_headers, above_start);
-    let cands_count = (&prefs_headers_fixed).len() - above_start;
-
-    for i in (above_start + 1)..prefs_headers_fixed.len() {
-        // The first ticket is labelled "A" and there are two candidates per ticket.
-        // So the _second_ "A:", if it exists, is the first BTL field.
-        // If it doesn't exist (loop exhausts) then _all_ we have are UnGrouped candidates
-        // and thus the first BTL field is simply the first prefs field at all.
-        if prefs_headers_fixed
-            .get(i)
-            .context("No candidates")?
-            .starts_with("A:")
-        {
-            below_start = i - above_start;
-            break;
-        }
-    }
-    let below_start = below_start; // make immutable now
+    // The first ticket is labelled "A" and there are two candidates per ticket.
+    // All tickets come before all candidates in the column order.
+    // So the _second_ "A:", if it exists, is the initial BTL field.
+    // If it doesn't exist then _all_ we have are UnGrouped candidates
+    // (and they start at what we would normally consider `above_start`)
+    let below_start = prefs_headers_fixed
+        .iter()
+        .enumerate()
+        .skip(above_start + 1)
+        .filter(|(_, s)| s.starts_with("A:"))
+        .map(|(i, _)| i)
+        .next()
+        .unwrap_or(above_start);
 
     // Create candidate number index
-
+    // We index fields by "TICKETCODE:LASTNAME Given Names"
     let mut cand_nums: HashMap<&str, usize> = HashMap::new();
     for (i, pref) in prefs_headers_fixed.iter().skip(above_start).enumerate() {
         cand_nums.insert(pref, 1 + i);
     }
-    let cand_nums = cand_nums; // make immutable now
 
     // set up some lookups...
     // A mapping between a party ID and a (pseudo)candidate number
@@ -309,151 +457,204 @@ pub fn booth_npps(
     trace!("Full Groups: {:?}", groups);
     trace!("ATL Groups: {:?}", groups_above);
     trace!("BTL Groups: {:?}", groups_below);
+    trace!("Below Starts At: {}", below_start);
 
-    eprintln!(); // still a normal eprintln for progress-jump reasons
+    Ok((combinations, below_start, groups_above, groups_below))
+}
 
-    /* ***** Start of main iteration ***** */
-
-    // Store all the things! DivBooth : rest of the derived columns
-    let mut booth_counts: HashMap<DivBooth, Vec<usize>> = HashMap::new();
-
-    let mut progress: usize = 0;
-
-    // We are now performing amortized allocation
-    // <https://blog.burntsushi.net/csv/#amortizing-allocations>
-    let mut record = csv::StringRecord::new();
-    while prefs_rdr.read_record(&mut record)? {
-        // String interning in action
-        let divnm = interner.get_or_intern(&record[1]);
-        let boothnm = interner.get_or_intern(&record[2]);
-
-        if (&record[1]).starts_with("---") {
-            // ^^ This conditional might be inverted for testing; 2019+ files do NOT contain a `---` line.
-            return Result::Err(eyre!("Preferences file is in the 2016 format."))
-                .suggestion("Upgrade the file to the 2019+ format with:\n\tnparty upgrade prefs");
+/*
+/// Determine whether a preference record is a formal vote Below The Line.
+///
+/// Per section 268A of the Commonwealth Electoral Act, a vote is BTL-formal if it has
+/// at least `[1]` through `[6]` marked BTL (and BTL-formality takes priority).
+/// (If there are fewer than 6 candidates, all squares must be marked)
+/// <http://classic.austlii.edu.au/au/legis/cth/consol_act/cea1918233/s268a.html>
+// NOTE 2020-05-14: I am quite confident this ATL-vs-BTL code is correct.
+// It produces the correct number of BTLs...
+#[inline(never)]
+pub fn check_btl(record: &csv::StringRecord, below_start: usize) -> bool {
+    if record.len() > below_start {
+        let mut btl_counts: [usize; 6] = [0; 6]; // NOTE: zero-indexing and potential fragility with wrapping adds.
+                                                 // The latter is only a problem if there are more than usize::MAX candidates BTL
+        for v in record.iter().skip(below_start) {
+            match v {
+                // Can we really rely on the lack of whitespace? We may need to trim() again
+                // Not doing it does save like 0.1 seconds per run though, that's 5%
+                "1" => btl_counts[0] += 1,
+                "2" => btl_counts[1] += 1,
+                "3" => btl_counts[2] += 1,
+                "4" => btl_counts[3] += 1,
+                "5" => btl_counts[4] += 1,
+                "6" => btl_counts[5] += 1,
+                _ => continue,
+            }
         }
+        // If each element of `btl_counts` is equal to exactly 1 then we have a valid 1-to-6 sequence.
+        // The `.take()` clause accounted for the (unlikely) case where there are fewer than 6 BTL candidates.
+        // ... except it results in the wrong number of BTLs.
+        btl_counts.iter().all(|c| *c == 1)
+    } else {
+        false // If it's too short to be a BTL ballot, it's not.
+    }
+}
+*/
 
-        // Now we analyse nPP. We categorise the preference sequence by its highest value for each group of candidates.
+/// Determine whether a preference record is a formal vote Below The Line.
+/// And if so, return its preference index.
+///
+/// Per section 268A of the Commonwealth Electoral Act, a vote is BTL-formal if it has
+/// at least `[1]` through `[6]` marked BTL (and BTL-formality takes priority).
+/// (If there are fewer than 6 candidates, all squares must be marked)
+/// <http://classic.austlii.edu.au/au/legis/cth/consol_act/cea1918233/s268a.html>
+// NOTE 2022-07-14: I am quite confident this ATL-vs-BTL code is correct.
+// It produces the correct number of BTLs and it has been fairly exhaustively checked against
+// the previous version of the code.
+#[inline(never)]
+pub fn handle_below(
+    record: &csv::StringRecord,
+    below_start: usize,
+    below_groups: &[usize],
+    bests: &mut Vec<(usize, usize)>,
+    order: &mut Vec<usize>,
+    groups_count: usize,
+    count: &mut usize,
+) -> Option<usize> {
+    if record.len() > below_start {
+        bests.clear();
+        // SAFETY: this is fine (tm)
+        unsafe { order.set_len(groups_count) }
+        order.fill(usize::MAX);
+        let mut btl_counts: [usize; 6] = [0; 6]; // NOTE: zero-indexing and potential fragility with wrapping adds.
+                                                 // The latter is only a problem if there are more than usize::MAX candidates BTL
+        for (i, v) in record
+            .iter()
+            .enumerate()
+            .skip(below_start)
+            .filter(|(_, s)| !s.is_empty())
+            .map(|(i, s)| (i, s.parse::<usize>().unwrap()))
+        {
+            match v {
+                // Can we really rely on the lack of whitespace? We may need to trim() again
+                // Not doing it does save like 0.1 seconds per run though, that's 5%
+                1 => btl_counts[0] += 1,
+                2 => btl_counts[1] += 1,
+                3 => btl_counts[2] += 1,
+                4 => btl_counts[3] += 1,
+                5 => btl_counts[4] += 1,
+                6 => btl_counts[5] += 1,
+                _ => (),
+            }
 
-        // First we must determine if it's ATL or BTL.
+            let g = below_groups[i];
+            if g < usize::MAX && v < order[g] {
+                order[g] = v;
+            }
+        }
+        // If each element of `btl_counts` is equal to exactly 1 then we have a valid 1-to-6 sequence.
+        // The `.take()` clause accounted for the (unlikely) case where there are fewer than 6 BTL candidates.
+        // ... except it results in the wrong number of BTLs.
+        if btl_counts.iter().all(|c| *c == 1) {
+            *count += 1;
 
-        // Per section 268A of the Commonwealth Electoral Act, a vote is BTL-formal if it has at least [1] through [6] marked BTL
-        // and BTL-formality takes priority over ATL-formality.
-        // NOTE 2020-05-14: I am quite confident this ATL-vs-BTL code is correct. It produces the correct number of BTLs...
-        let mut is_btl: bool = false; // we must test whether it is, but...
-        let bsa = above_start + below_start; // BTL, start, absolute
-        if record.len() > bsa {
-            // ^^^ this is the actual biggest speedup for default 2019 files.
-            // If there aren't any fields for BTLs, there aren't any at all...
-            // and the 2019 files don't bother with trailing commas.
-            let mut btl_counts: [usize; 6] = [0; 6]; // Note zero-indexing now!
-                                                     // fragility note: wrapping adds.
-                                                     // This is only a problem if there are more than usize::MAX candidates BTL
-                                                     // ... and someone plays *extreme* silly buggers
-
-            for v in record.iter().skip(bsa) {
-                match v {
-                    // Can we really rely on the lack of whitespace? We may need to trim() again
-                    // Not doing it does save like 0.1 seconds per run though, that's 5%
-                    "1" => btl_counts[0] += 1,
-                    "2" => btl_counts[1] += 1,
-                    "3" => btl_counts[2] += 1,
-                    "4" => btl_counts[3] += 1,
-                    "5" => btl_counts[4] += 1,
-                    "6" => btl_counts[5] += 1,
-                    _ => continue,
+            for (i, v) in order.iter().enumerate() {
+                if *v < usize::MAX {
+                    bests.push((*v, i));
                 }
             }
-            is_btl = btl_counts.iter().all(|c| *c == 1);
+            // Sort by bests, then convert to the order of indices
+            // (Unstable sort is in-place and there shouldn't be any equal elements anyway)
+            bests.sort_unstable();
+            order.clear(); // this is very necessary!
+            order.extend(bests.iter().map(|(_, p)| p));
+            // panic!(
+            //     "btl with bests: {:?} and order {:?} from record {:#?}",
+            //     bests, order, record
+            // );
+            Some(calculate_index(order, groups_count))
+        } else {
+            None
         }
+    } else {
+        None // If it's too short to be a BTL ballot, it's not.
+    }
+}
 
-        // Select the appropriate candidates
-        let groups_which = if is_btl { &groups_below } else { &groups_above };
-        if is_btl {
-            btl_count += 1;
-        }
-
-        // Having determined the ballot's ATL/BTL status we determine the "best" preference
-        // (if any) for each party we care about. We take only the "best" if candidates
-        // are interleaved. Thus `bests` is a list of `(preference, party number)` pairs.
-        // (Each party has an implicit number, like we mentioned in [make_combo_tree]).
-        let mut bests: Vec<(usize, usize)> = Vec::with_capacity(partykeys.len());
-
-        for (party_num, candidate_nums) in groups_which.iter() {
-            // For each party, iterate over its candidates and get the best-preferenced.
-            let mut cur_best: usize = cands_count;
-            for i in candidate_nums {
-                // ^^ candidate_nums *should* be disjoint across iterations...
-                if let Some(x) = record.get(i + above_start - 1) {
-                    // ^^ always check: is this the right offset?
-                    if let Ok(bal) = x.trim().parse::<usize>() {
-                        // ^^ Many if not most entries are empty - these will produce
-                        //      parse errors, so the if-let filters that
-                        if bal < cur_best {
-                            cur_best = bal;
-                        }
+/// Distribute the preference of a single ballot to an ordering of the specified [`Groups`].
+///
+/// Having determined the ballot's ATL/BTL status we determine the "best" preference
+/// (if any) for each party we care about. (Candidates may be interleaved.)  
+/// Then sort and determine the index into the relevant [`Combinations`].
+/// For performance reasons, `bests` is hoisted.
+#[inline(never)]
+pub fn distribute_preference(
+    record: &csv::StringRecord,
+    groups: &Groups,
+    // combo_tree: &ComboTree,
+    above_start: usize,
+    cands_count: usize,
+    bests: &mut Vec<(usize, usize)>,
+    order: &mut Vec<usize>,
+) -> usize {
+    bests.clear();
+    order.clear();
+    for (group_num, candidate_nums) in groups.iter() {
+        // For each group, iterate over its candidates and get the best-preferenced.
+        let mut cur_best = cands_count;
+        for i in candidate_nums {
+            // ^^ Performance: candidate_nums *should* be disjoint across iterations...
+            if let Some(x) = record.get(i + above_start - 1) {
+                // ^^ always check: is this the right offset?
+                if x.is_empty() {
+                    continue;
+                }
+                if let Ok(bal) = x.trim().parse() {
+                    // ^^ Many if not most entries are empty...
+                    if bal < cur_best {
+                        cur_best = bal;
                     }
                 }
             }
-            if cur_best < cands_count {
-                bests.push((cur_best, *party_num));
-            }
         }
-
-        // sort to order them
-        bests.sort_unstable();
-        let order: Vec<usize> = bests.iter().map(|x| x.1).collect();
-        let pref_idx = *combo_tree.get(&order).context("no pref index?")?;
-
-        let divbooth: DivBooth = (divnm, boothnm);
-
-        let booth = booth_counts
-            .entry(divbooth)
-            .or_insert_with(|| vec![0_usize; combinations.len()]);
-        booth[pref_idx] += 1;
-
-        // progress!
-        progress += 1;
-        if progress % 100_000 == 0 {
-            info!(
-                "{}\t\tPreferencing progress: {} ballots", // normally a leading {}
-                ttyjump(),
-                progress
-            );
+        if cur_best < cands_count {
+            bests.push((cur_best, *group_num));
         }
     }
-    // and we are done with the main task!
-    info!(
-        "{}\t\tPreferencing complete: {} ballots ({} were BTL)",
-        ttyjump(),
-        progress,
-        btl_count
-    );
 
-    trace!(
-        "We interned {} strings out of a possible {}.",
-        interner.len(),
-        u16::MAX
-    );
+    // Sort by bests, then convert to the order of indices
+    // (Unstable sort is in-place and there shouldn't be any equal elements anyway)
+    bests.sort_unstable();
+    order.extend(bests.iter().map(|x| x.1));
+    calculate_index(order, groups.len())
+    // panic!(
+    //     "{:?}\nbests: {:?}\torder: {:?}\tindex: {}",
+    //     record, bests, order, idx
+    // );
+}
 
-    /* ***** End of main iteration ***** */
-
-    // Initially, the special votes are split up into e.g. POSTAL_1 through POSTAL_8
-    // This isn't useful for us, so we'll aggregate them.
-    info!("\t\tAggregating Absents, Postals, Prepolls & Provisionals");
-
-    let mut division_specials: HashMap<DivBooth, Vec<usize>> = HashMap::new();
+/// Aggregate the "special" booths by Division, removing them from the main structure
+/// Initially, the special votes are split up into e.g. `POSTAL_1` through `POSTAL_8`
+/// (For backwards compatibility we'd like to print them at the end of the file)
+#[inline(never)]
+pub fn aggregate_specials(
+    booth_counts: &mut HashMap<DivBooth, Vec<usize>>,
+    combinations: &[String],
+    interner: &StringInterner<StringBackend<SymbolU16>>,
+) -> BTreeMap<(String, String), Vec<usize>> {
+    let mut division_specials: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
 
     let mut to_remove = Vec::new();
 
-    // What we're doing here is aggregating all special votes.
-    for (bk, bv) in &booth_counts {
+    for (bk, bv) in booth_counts.iter() {
         for w in &NON_BOOTH_CONVERT {
+            // hoisting for file order
+            let divbooth = (
+                interner.resolve(bk.0).unwrap().to_string(),
+                non_booth_convert(w).to_string(),
+            );
+            let db = division_specials
+                .entry(divbooth)
+                .or_insert_with(|| vec![0_usize; bv.len()]);
             if interner.resolve(bk.1).unwrap().contains(w) {
-                let divbooth: DivBooth = (bk.0, interner.get_or_intern(non_booth_convert(w)));
-                let db = division_specials
-                    .entry(divbooth)
-                    .or_insert_with(|| vec![0_usize; bv.len()]);
                 for j in 0..combinations.len() {
                     db[j] += bv[j];
                 }
@@ -467,12 +668,20 @@ pub fn booth_npps(
     for bk in &to_remove {
         booth_counts.remove(bk);
     }
+    division_specials
+}
 
-    // [NPP_FIELD_NAMES] + [combinations] + [total]
-
-    info!("\t\tWriting File");
-
-    // and now we write
+/// Write the output CSV for the distribution stage.
+/// Format: `{NPP_FIELD_NAMES} + {combinations} + Total`
+#[inline(never)]
+pub fn write_output(
+    npp_booths_path: &Path,
+    combinations: &[String],
+    booth_counts: &HashMap<DivBooth, Vec<usize>>,
+    division_specials: BTreeMap<(String, String), Vec<usize>>,
+    booths: &HashMap<DivBooth, BoothRecord>,
+    interner: &StringInterner<StringBackend<SymbolU16>>,
+) -> Result<()> {
     // first create directory if needed
     create_dir_all(
         npp_booths_path
@@ -485,7 +694,7 @@ pub fn booth_npps(
         .from_path(npp_booths_path)?;
 
     let npp_header = &mut NPP_FIELD_NAMES.to_vec();
-    for i in &combinations {
+    for i in combinations {
         npp_header.push(i.as_str());
     }
     npp_header.push("Total");
@@ -493,11 +702,28 @@ pub fn booth_npps(
     wtr.write_record(npp_header)
         .context("error writing booths header")?;
 
-    for (bk, bv) in booth_counts.iter().sorted() {
-        let br = match booths.get(bk) {
-            Some(x) => x,
-            _ => bail!("It's really weird, but {:?} isn't in `booths`.", bk),
-        };
+    // Switching to string interning messed up the file order a little bit.
+    // We'd like it to be sorted by ({division name}, {polling place name})
+    // for all ordinary divisions, then the specials separately after ---
+    // this matches previous behaviour.
+    // (when sorted, old and new files have identical hashes,
+    //    so we can be confident in the rest of everything)
+
+    let mut sorted_booths: Vec<&(SymbolU16, SymbolU16)> = booth_counts.keys().collect();
+    sorted_booths.sort_by_cached_key(|(div_id, booth_id)| {
+        (
+            interner.resolve(*div_id).unwrap(),
+            interner.resolve(*booth_id).unwrap(),
+        )
+    });
+
+    for bk in sorted_booths {
+        let bv = booth_counts
+            .get(bk)
+            .context("missing entry in `booth_counts`")?;
+        let br = booths
+            .get(bk)
+            .with_context(|| eyre!("It's really weird, but {:?} isn't in `booths`.", bk))?;
         let mut bdeets = vec![
             br.PollingPlaceID.to_string(),
             br.DivisionNm.clone(),
@@ -514,92 +740,117 @@ pub fn booth_npps(
         let bdeets = bdeets;
         wtr.write_record(&bdeets).context("error writing booths")?;
     }
+
     wtr.flush().context("error writing booths")?;
 
-    for (bk, bv) in &division_specials {
-        let mut bdeets: Vec<String> = vec![
-            "".to_string(),
-            interner.resolve(bk.0).unwrap().to_string(),
-            interner.resolve(bk.1).unwrap().to_string(),
-            "".to_string(),
-            "".to_string(),
-        ];
+    for (bk, bv) in division_specials {
+        let mut bdeets: Vec<String> =
+            vec!["".to_string(), bk.0, bk.1, "".to_string(), "".to_string()];
 
         let mut total = 0;
-        for i in bv.iter() {
+        for i in bv {
             bdeets.push(i.to_string());
-            total += *i;
+            total += i;
         }
         bdeets.push(total.to_string());
         let bdeets = bdeets;
         wtr.write_record(&bdeets).context("error writing booths")?;
     }
     wtr.flush().context("Failed to finalise writing booths")?;
-
     Ok(())
 }
 
-/*
-    Performance Improvement Notes
-    =============================
+/// Calculate a preference index given an ordering
+/// not gonna lie, this is pretty cursed™
+#[inline(never)]
+pub fn calculate_index(order: &[usize], groups_count: usize) -> usize {
+    let mut idx = 0_usize;
 
-    String Interning
-    ----------------
+    // eprintln!("order: {:?},    groups_count:{groups_count}", order);
 
-    Because PollingPlaceID and VoteCollectionPointID aren't the same thing,
-    we need to use (Division, Booth) as our key. This poses a bit of an issue:
-    the StringRecord iterator gives us an &str to the fields, but
-    (a) the lifetime is only good for that iteration
-    (b) the types don't match for Map operations
+    if order.is_empty() || groups_count == 0 {
+        return 0;
+    }
 
-    So originally, DivBooths were `(String, String)` and we cloned extensively.
-    However, using string interning offers a potential benefit: we can swap out
-    our Strings for Symbols (which are just uints in disguise).
-    This also has HashMap benefits, so we'll have to test non-interned HashMaps
+    // Shorter lengths
+    // SUM (N!/(N-i)!); for i in [0, L-1]; L <= N
+    for i in 0..order.len() {
+        let mut q: usize = 1;
+        for j in 0..i {
+            q *= groups_count - j;
+        }
+        idx += q;
+    }
 
-    Relative result notes from `cargo-flamegraph`:
+    // tail recursion over remaining entries
+    for o in 0..order.len() {
+        let n = groups_count - o;
+        let l = order.len() - o;
 
-    * with interning we seem to be running at about 4% of runtime on interning?
-    * without it we spend about 4% of time on alloc::borrow::ToOwned which doesn't show up with interning
-    * we also spend WAY more time in BTree::entry, 17% vs 4%
+        // `a` is `order[o]` but adjusted for any
+        // "earlier" entries that were smaller
+        let a = order[o] - order.iter().take(o).filter(|x| **x < order[o]).count();
 
-    Absolute result notes from timing it (obviously machine-specific, but indicative):
-    `for i in {1..10}; do time ./target/release/nparty -qq run -p distribute -s QLD_4PP configurations/2022.toml; done`
-    (Default hashers, U16 symbols - QLD-2022 for example has < 2000 strings to intern.)
+        if a > 0 {
+            // Earlier entries for this-level length
+            // If there are N remaining parties, remaining length is L,
+            // we've already processed O entries and
+            // our adjusted index is A, then...
+            // there are A * ( (N - 1) choose (L - 1)) entries before this one
+            // <https://en.wikipedia.org/wiki/Binomial_coefficient#Multiplicative_formula>
+            let mut t = a;
+            // let mut ii = 1;
+            for i in 1..l {
+                t *= n - i;
+            }
+            idx += t; // / ii;
 
-    * Interning and main structure BTreeMap: 3.11 mean, 3.17 max, 3.04 min
-    * Interning and main structure HashMap: 3.09 mean, 3.15 max, 3.04 min
-    * String/cloning and main structure BTreeMap: 3.74 mean, 3.83 max, 3.71 min
-    * String/cloning and main structure HashMap: 3.38 mean, 3.46 max, 3.32 min
+            // eprintln!("    o:{o},    n:{n},    l:{l},    a:{a},   t:{t}   =>  {idx}");
+        }
+    }
 
-    So interning is faster, but really not by much. A larger saving was just in switching to HashMap.
-    Still, we got a 17% speedup for this phase all told and that's pretty good.
+    idx
+}
 
-    Switching to amortized allocations
-    ----------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_calculate_index() {
+        // *** First-of-the-length ***
+        // Empty
+        assert_eq!(calculate_index(&[], 4), 0);
 
-    * It's notably faster. With the same setup as above, we get mean 2.44, max 2.47, min 2.41 - a 22% speedup.
+        // AlpGrn
+        assert_eq!(calculate_index(&[0, 1], 4), 5);
 
-    "Parsing the row up-front" vs. "Parsing the row as-needed"
-    ----------------------------------------------------------
+        // AlpGrnLib
+        assert_eq!(calculate_index(&[0, 1, 2], 4), 17);
 
-    Currently, we parse individual entries in the row as-needed.
-    * When BTL-checking we need to iterate over (most of) the row and do string comparisons
-    ** (cost of that vs cost of parsing unclear, probably not worth it right now)
-    * For determining "bests" we need to get as many entries as there are candidates
-    ** assuming no duplication across groups, that's only O(n) anyway
-    * The other factor is that many entries in the row are actually nulls; they're empty.
-    ** We'd want to substitute all of those for some too-large number if we parsed up-front.
+        // AlpGrnLibPhn
+        assert_eq!(calculate_index(&[0, 1, 2, 3], 4), 41);
 
-    Conclusion: parsing-as-needed is probably superior.
+        // *** Last-of-the-length ***
 
-    Extension: what if we switch the main booths reader to a ByteRecord?
-    We'll need to parse to strings to get
-    * Division name
-    * Booth name
-    * Candidate preference for bests
-    We can potentially parsing for BTL - compare bytes, not strings.
+        // PhnLib
+        assert_eq!(calculate_index(&[3, 2], 4), 16);
 
-    Result: this was actually slightly slower!
+        // PhnLibGrn
+        assert_eq!(calculate_index(&[3, 2, 1], 4), 40);
 
-*/
+        // PhnLibGrnAlp
+        assert_eq!(calculate_index(&[3, 2, 1, 0], 4), 64);
+
+        // *** In-betweens ***
+    }
+
+    #[test]
+    fn auto_combinator() {
+        for groups_count in 0..10 {
+            let uut = make_combo_tree(groups_count);
+            for (order, idx) in uut {
+                assert_eq!(calculate_index(&order, groups_count), idx);
+            }
+        }
+    }
+}
