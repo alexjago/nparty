@@ -1,4 +1,6 @@
 //! The n-party-preferred *distribution* phase.
+use super::term;
+use super::utils::{fix_prefs_headers, open_csvz_from_path, StateAb};
 /// We want to reduce each unique preference sequence to some ordering
 ///    of each of the parties. For example, for four parties there are 65 orderings:
 ///   `(0!) + (4 * 1!) + (6 * 2!) + (4 * 3!) + (4!)`
@@ -16,9 +18,6 @@ use std::fs::create_dir_all;
 use std::path::Path;
 use string_interner::{backend::StringBackend, symbol::SymbolU16, StringInterner};
 use tracing::{info, trace};
-
-use super::term;
-use super::utils::{fix_prefs_headers, open_csvz_from_path, StateAb};
 
 /// The output file will start with these five columns:
 /// Booth ID, division name, booth name, latitude and longitude.
@@ -208,17 +207,23 @@ pub fn booth_npps(
     let mut bests: Vec<(usize, usize)> =
         Vec::with_capacity(groups_below.len().max(groups_above.len()));
     let mut order: Vec<usize> = Vec::with_capacity(bests.len());
-    let mut record = csv::StringRecord::new(); // Performance: <https://blog.burntsushi.net/csv/#amortizing-allocations>
-    while prefs_rdr.read_record(&mut record)? {
+    // let mut record = csv::StringRecord::new(); // Performance: <https://blog.burntsushi.net/csv/#amortizing-allocations>
+    let mut record =
+        csv::ByteRecord::with_capacity(prefs_headers_fixed.capacity(), prefs_headers_fixed.len());
+    // while prefs_rdr.read_record(&mut record)? {
+    while prefs_rdr.read_byte_record(&mut record)? {
         // String interning in action
-        let divnm = interner.get_or_intern(&record[1]);
-        let boothnm = interner.get_or_intern(&record[2]);
-        if (&record[1]).starts_with("---") {
+        // let divnm = interner.get_or_intern(&record[1]);
+        // let boothnm = interner.get_or_intern(&record[2]);
+        let divnm = interner.get_or_intern(std::str::from_utf8(&record[1])?);
+        let boothnm = interner.get_or_intern(std::str::from_utf8(&record[2])?);
+
+        if (&record[1]).starts_with(b"---") {
             // ^^ This conditional might be inverted for testing; 2019+ files do NOT contain a `---` line.
             return Result::Err(eyre!("Preferences file is in the 2016 format."))
                 .suggestion("Upgrade the file to the 2019+ format with:\n\tnparty upgrade prefs");
         }
-        /*
+        /* // Saving for reference
         // First we must determine if it's ATL or BTL, then select appropriate candidates.
         let is_btl: bool = check_btl(&record, below_start);
         btl_count += if is_btl { 1 } else { 0 };
@@ -257,6 +262,7 @@ pub fn booth_npps(
             )
         });
 
+        /* // Saving for reference
         // if pref_idx != pref_idx_old {
         //     panic!(
         //         "Difference in result: old was {} but new is {} on iteration{}\n{}\nbests: {:?}",
@@ -271,7 +277,7 @@ pub fn booth_npps(
         //             .collect::<String>(),
         //         bests
         //     );
-        // }
+        // } */
 
         // ... and store.
         let divbooth: DivBooth = (divnm, boothnm);
@@ -462,7 +468,7 @@ pub fn make_candidate_info(
     Ok((combinations, below_start, groups_above, groups_below))
 }
 
-/*
+/*  // Saving for reference
 /// Determine whether a preference record is a formal vote Below The Line.
 ///
 /// Per section 268A of the Commonwealth Electoral Act, a vote is BTL-formal if it has
@@ -511,7 +517,7 @@ pub fn check_btl(record: &csv::StringRecord, below_start: usize) -> bool {
 // the previous version of the code.
 #[inline(never)]
 pub fn handle_below(
-    record: &csv::StringRecord,
+    record: &csv::ByteRecord,
     below_start: usize,
     below_groups: &[usize],
     bests: &mut Vec<(usize, usize)>,
@@ -521,8 +527,7 @@ pub fn handle_below(
 ) -> Option<usize> {
     if record.len() > below_start {
         bests.clear();
-        // SAFETY: this is fine (tm)
-        unsafe { order.set_len(groups_count) }
+        order.resize(order.capacity(), usize::MAX);
         order.fill(usize::MAX);
         let mut btl_counts: [usize; 6] = [0; 6]; // NOTE: zero-indexing and potential fragility with wrapping adds.
                                                  // The latter is only a problem if there are more than usize::MAX candidates BTL
@@ -531,7 +536,8 @@ pub fn handle_below(
             .enumerate()
             .skip(below_start)
             .filter(|(_, s)| !s.is_empty())
-            .map(|(i, s)| (i, s.parse::<usize>().unwrap()))
+            // .map(|(i, s)| (i, s.parse::<usize>().unwrap()))
+            .map(|(i, s)| (i, parse_u8_b10(s)))
         {
             match v {
                 // Can we really rely on the lack of whitespace? We may need to trim() again
@@ -587,7 +593,7 @@ pub fn handle_below(
 /// For performance reasons, `bests` is hoisted.
 #[inline(never)]
 pub fn distribute_preference(
-    record: &csv::StringRecord,
+    record: &csv::ByteRecord,
     groups: &Groups,
     // combo_tree: &ComboTree,
     above_start: usize,
@@ -607,12 +613,13 @@ pub fn distribute_preference(
                 if x.is_empty() {
                     continue;
                 }
-                if let Ok(bal) = x.trim().parse() {
-                    // ^^ Many if not most entries are empty...
-                    if bal < cur_best {
-                        cur_best = bal;
-                    }
+                let bal = parse_u8_b10(x);
+                // if let Ok(bal) = x.trim().parse() {
+                // ^^ Many if not most entries are empty...
+                if bal < cur_best {
+                    cur_best = bal;
                 }
+                // }
             }
         }
         if cur_best < cands_count {
@@ -812,6 +819,30 @@ pub fn calculate_index(order: &[usize], groups_count: usize) -> usize {
     idx
 }
 
+// not only buggy, but slower somehow!
+// it was buggy because you used hex constants
+/// Parse a `&[u8]` as though it were an ASCII base-10 string
+/// skipping over any bytes not corresponding to ascii 1-10
+#[inline(never)]
+pub fn parse_u8_b10(input: &[u8]) -> usize {
+    // eprintln!("{input:?}");
+    let mut acc: usize = 0;
+
+    for k in input {
+        match k {
+            48 => {
+                // ascii 0
+                acc *= 10;
+            }
+            49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 => acc = acc * 10 + ((*k - 48) as usize),
+            _ => continue,
+        }
+        // eprintln!("\t{k} {acc}");
+    }
+
+    acc
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -851,6 +882,19 @@ mod tests {
             for (order, idx) in uut {
                 assert_eq!(calculate_index(&order, groups_count), idx);
             }
+        }
+    }
+
+    #[test]
+    fn u8_b10_test() {
+        assert_eq!(0, parse_u8_b10(b""));
+
+        assert_eq!(0, parse_u8_b10(b"   "));
+
+        assert_eq!(100, parse_u8_b10(b" 1 0 0"));
+
+        for i in 0..255 {
+            assert_eq!(i, parse_u8_b10(i.to_string().as_bytes()));
         }
     }
 }

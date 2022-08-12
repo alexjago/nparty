@@ -56,6 +56,11 @@ path = "src/main.rs"
 name = "nparty-gui"
 path = "src/gui.rs"
 
+[[bin]]
+name = "speedread"
+path = "src/speedread.rs"
+
+
 [package.metadata.bundle.bin.nparty-gui]
 name = "nparty"
 identifier = "net.abjago.nparty"

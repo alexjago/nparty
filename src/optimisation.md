@@ -16,7 +16,7 @@ N.B.
 
 * Functions need to be public and non-inlined to show up in the flamegraph! 
 * Rename a flamegraph once it's generated!
-
+* For 2022 QLD_4PP, the MD5 hash of `NPP_Booths.csv` should be `4809c58e9241e0db945b505802719102`
 
 Candidate/Order indexing
 ------------------------
@@ -146,4 +146,23 @@ I'm not 100% certain how `btl_counts.iter().all(|c| *c == 1)` is optimising. Swi
 
 We have to iterate over all BTLs when they exist. What's the penalty for parsing them then and there, and then having specialised `distribute_above` and `distribute_below`?
 
-Result: smashed the two-second mark!
+Result: smashed the two-second mark! About 1.75 seconds average run time. 
+
+
+Selectively Ditching Unicode
+----------------------------
+
+Most of the time, we don't need Unicode validation. The vast bulk of the file (if not all of it) is purely in the ASCII range.
+
+* Take headers as strings still
+* Iterate over `ByteRecords` 
+* Still convert division and booth names for interning... 
+* But parse integers directly from `&[u8]`
+
+Result: not significantly faster (maybe even slower!). 
+
+
+Ultimate Speed Test (lower bound)
+---------------------------------
+
+See `speedread.rs` - 1.25 seconds comparative run time reading from ZIP; 0.85 seconds reading from pre-decompressed CSV.
