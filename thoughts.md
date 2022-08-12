@@ -136,3 +136,16 @@ Refactor todo: have two binaries.
     path = "src/gui.rs"
 
 Each of which has its own entrypoint to common code.
+
+## Debian/Ubuntu notes
+
+If you get a linking error with:
+
+      = note: /usr/bin/ld: cannot find -lxcb-shape: No such file or directory
+          /usr/bin/ld: cannot find -lxcb-xfixes: No such file or directory
+          collect2: error: ld returned 1 exit status
+
+Try:
+
+    sudo apt install libxcb-shape0-dev libxcb-xfixes0-dev
+
