@@ -1197,6 +1197,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1524,7 +1533,7 @@ dependencies = [
  "factorial",
  "glob",
  "indexmap 1.9.3",
- "itertools",
+ "itertools 0.10.5",
  "klask",
  "log",
  "ouroboros",
@@ -1643,9 +1652,9 @@ dependencies = [
 
 [[package]]
 name = "ouroboros"
-version = "0.16.0"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6a6d0919a92ba28d8109a103e0de08f89706be0eeaad1130fd1a34030dee84a"
+checksum = "1c86de06555b970aec45229b27291b53154f21a5743a163419f4e4c0b065dcde"
 dependencies = [
  "aliasable",
  "ouroboros_macro",
@@ -1654,11 +1663,12 @@ dependencies = [
 
 [[package]]
 name = "ouroboros_macro"
-version = "0.16.0"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46bc2307dc3420554ae349230dac4969c66d7c2feead3a8cab05ea0c604daca6"
+checksum = "8cad0c4b129e9696e37cb712b243777b90ef489a0bfaa0ac34e7d9b860e4f134"
 dependencies = [
  "heck",
+ "itertools 0.11.0",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -2342,7 +2352,7 @@ checksum = "5376256e44f2443f8896ac012507c19a012df0fe8758b55246ae51a2279db51f"
 dependencies = [
  "combine",
  "indexmap 1.9.3",
- "itertools",
+ "itertools 0.10.5",
  "serde",
 ]
 
