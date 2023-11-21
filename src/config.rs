@@ -40,7 +40,7 @@ use toml_edit::{ser, Document, Item, TableLike};
 
 /// Does what it says on the tin (or at least, the function signature).
 pub fn get_cfg_doc_from_path(cfgpath: &Path) -> Result<Document> {
-    read_to_string(&cfgpath)
+    read_to_string(cfgpath)
         .context("Config file could not be read")?
         .parse::<Document>()
         .context("Config file could not be parsed")
@@ -90,7 +90,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
         }
     }
 
-    for (scenario_key, scenario_raw) in cfg.iter() {
+    for (scenario_key, scenario_raw) in cfg {
         // eprintln!(
         //     "{}\n{}\n{:?}",
         //     scenario_key,
@@ -143,7 +143,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
             .context("Missing OUTPUT_DIR")?;
 
         let npp_booths = get_attribute("NPP_BOOTHS_FN", scenario, &defaults, PathBuf::from)
-            .map(|x| output_dir.clone().join(&name).join(&x))
+            .map(|x| output_dir.clone().join(&name).join(x))
             .context("Missing NPP_BOOTHS_FN")?;
 
         let prefs_path = get_attribute("PREFS_PATH", scenario, &defaults, PathBuf::from)
@@ -155,10 +155,10 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
             get_attribute("SA1S_BREAKDOWN_PATH", scenario, &defaults, PathBuf::from);
 
         let sa1s_prefs = get_attribute("SA1S_PREFS_FN", scenario, &defaults, PathBuf::from)
-            .map(|x| output_dir.clone().join(&name).join(&x));
+            .map(|x| output_dir.clone().join(&name).join(x));
 
         let npp_dists = get_attribute("NPP_DISTS_FN", scenario, &defaults, PathBuf::from)
-            .map(|x| output_dir.clone().join(&name).join(&x));
+            .map(|x| output_dir.clone().join(&name).join(x));
 
         let sa1s_dists = get_attribute("SA1S_DISTS_PATH", scenario, &defaults, PathBuf::from);
 
@@ -169,7 +169,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
         // Really the only complicated parse is the GROUPS.
         let mut groups: Parties = IndexMap::new();
         if scenario.contains_key("GROUPS") {
-            for (group_name, group) in scenario.get("GROUPS").unwrap().as_table().unwrap().iter() {
+            for (group_name, group) in scenario.get("GROUPS").unwrap().as_table().unwrap() {
                 let groupvec = group
                     .as_array()
                     .unwrap()
@@ -179,7 +179,7 @@ pub fn get_scenarios(cfg: &Document) -> Result<BTreeMap<String, Scenario>> {
                 groups.insert(String::from(group_name), groupvec);
             }
         } else if defaults.contains_key("GROUPS") {
-            for (group_name, group) in defaults.get("GROUPS").unwrap().as_table().unwrap().iter() {
+            for (group_name, group) in defaults.get("GROUPS").unwrap().as_table().unwrap() {
                 let groupvec = group
                     .as_array()
                     .unwrap()
@@ -230,25 +230,25 @@ pub fn list_scenarios(cfgpath: &Path) -> Result<()> {
         let state = scenario.state.to_string();
         let groups = scenario.groups.keys().join(" v. ");
         let year = scenario.year;
-        output.push(format!("{}\t{}\t{}\t{}", name, groups, state, year));
+        output.push(format!("{name}\t{groups}\t{state}\t{year}"));
     }
 
     if atty::is(atty::Stream::Stdout) {
         let mut tw = TabWriter::new(vec![]);
-        writeln!(&mut tw, "{}", headers)?;
+        writeln!(&mut tw, "{headers}")?;
         for i in output {
-            writeln!(&mut tw, "{}", i)?;
+            writeln!(&mut tw, "{i}")?;
         }
         tw.flush()?;
         let output = String::from_utf8(tw.into_inner()?)?;
         let firstnewline = output.find('\n').unwrap();
         let head = &output[0..firstnewline];
         let body = &output[firstnewline..output.len()];
-        println!("{}{}{}{}", BOLD, head, END, body);
+        println!("{BOLD}{head}{END}{body}");
     } else {
-        println!("{}", headers);
+        println!("{headers}");
         for i in output {
-            println!("{}", i);
+            println!("{i}");
         }
     }
     Ok(())
@@ -282,14 +282,14 @@ where
     }
     if existing.is_some() {
         let ex = existing?.clone();
-        let maybe = input(&format!("Enter {} [default: {:?}]: ", name, ex)).ok()?;
+        let maybe = input(&format!("Enter {name} [default: {ex:?}]: ")).ok()?;
         if maybe.is_empty() {
             return Some(ex);
         }
         return T::from_str(&maybe).ok();
     }
     loop {
-        maybe = input(&format!("Enter {}: ", name)).ok()?;
+        maybe = input(&format!("Enter {name}: ")).ok()?;
         if maybe.is_empty() {
             if skippable {
                 return None;
@@ -400,8 +400,7 @@ pub fn cli_scenarios(
             // search-filter candidates in a loop to add to the group
             loop {
                 let pattern = input(&format!(
-                    "Search in {} (case-insensitive, regex allowed):\n",
-                    state
+                    "Search in {state} (case-insensitive, regex allowed):\n"
                 ))?;
 
                 if pattern.is_empty() {
@@ -423,7 +422,7 @@ pub fn cli_scenarios(
                 let fc: Vec<FilteredCandidate> = filter_candidates(candidates, state, &pattern);
 
                 if !fc.is_empty() {
-                    println!("Selected Candidates for {}", state);
+                    println!("Selected Candidates for {state}");
 
                     let mut tw = TabWriter::new(vec![]);
                     for c in &fc {
@@ -464,7 +463,7 @@ pub fn cli_scenarios(
             groups.keys().join("")
         );
         let keepit =
-            input(&format!("Use suggested scenario code {} [Y]/n: ", name))?.to_uppercase();
+            input(&format!("Use suggested scenario code {name} [Y]/n: "))?.to_uppercase();
         if !(keepit.starts_with('Y') || keepit.is_empty()) {
             name = String::new();
             while name.is_empty() {

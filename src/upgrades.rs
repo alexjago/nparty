@@ -235,7 +235,7 @@ pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> color_eyre::eyre::Result<()> {
         // "RATIO of SA1_7DIGITCODE_old is in SA1_7DIGITCODE_new"
         let old_sa1 = row.SA1_Id.clone();
         if let Some(split) = corrs.get(&old_sa1) {
-            for (new_sa1, ratio) in split.iter() {
+            for (new_sa1, ratio) in split {
                 let e = converted
                     .entry(new_sa1.clone())
                     .or_default()
@@ -362,10 +362,10 @@ pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> color_eyre::eyre::
 
 /// Performs the `upgrade booths` subcommand.
 /// TODO: is this pretty basic SQL? Anything else? Well, upgrading SA1s is too but prefs is more complex
-///     select year, state_ab, div_nm, new as ccd_id, pp_id, pp_nm, sum(votes * ratio)
+///     select year, `state_ab`, `div_nm`, new as `ccd_id`, `pp_id`, `pp_nm`, sum(votes * ratio)
 ///     from Booths, Corrs
-///     join on Corrs.old = Booths.ccd_id
-///     group by year, state_ab, div_nm, new, pp_id, pp_nm;
+///     join on Corrs.old = `Booths.ccd_id`
+///     group by year, `state_ab`, `div_nm`, new, `pp_id`, `pp_nm`;
 /// Well, except that we consider Corrs' rows by position, rather than by name
 /// Also one file might be in 7 digit codes and the other in 11 digit codes
 pub fn do_upgrade_booths(args: CliUpgradeBooths) -> color_eyre::eyre::Result<()> {

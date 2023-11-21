@@ -25,7 +25,7 @@ pub struct Cli {
     pub verbose: Verbosity<InfoLevel>,
 }
 
-#[derive(Subcommand, Debug, PartialEq)]
+#[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum CliCommands {
     Configure(CliConfigure),
     #[clap(subcommand)]
@@ -42,7 +42,7 @@ pub enum CliCommands {
 }
 
 /// Either download all necessary AEC data directly, or examine the URLs to the relevant files.
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 #[allow(non_snake_case)]
 #[clap(
     after_help = "Please note that you'll also need to convert XLSX to CSV manually. At least for now..."
@@ -63,7 +63,7 @@ pub enum CliData {
 }
 
 /// Print an example configuration (TOML format)
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 #[allow(non_snake_case)]
 pub struct CliExample {
     /// The year of the configuration
@@ -72,7 +72,7 @@ pub struct CliExample {
 }
 
 /// The year for the example configuration
-#[derive(Debug, PartialEq, Clone, ArgEnum)]
+#[derive(Debug, PartialEq, Eq, Clone, ArgEnum)]
 pub enum CliExampleYear {
     #[clap(name = "2016")]
     TwentySixteen = 2016,
@@ -97,7 +97,7 @@ impl std::fmt::Display for CliExample {
 }
 
 /// Upgrade older electoral and geographic data files to be compatible with more recent ones.
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 pub enum CliUpgrade {
     Prefs(CliUpgradePrefs),
     Sa1s(CliUpgradeSa1s),
@@ -105,7 +105,7 @@ pub enum CliUpgrade {
 }
 
 /// Upgrade a preference file to the latest format (e.g. 2016 to 2019)
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 pub struct CliUpgradePrefs {
     /// suffix for when filenames would collide
     #[clap(long, default_value_t = String::from("_to19"))]
@@ -129,7 +129,7 @@ pub struct CliUpgradePrefs {
 }
 
 /// Convert an SA1s-Districts file from old SA1s to new (e.g. 2011 to 2016 ASGS)
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 pub struct CliUpgradeSa1s {
     /// Indicate lack of header row for input file
     #[clap(long)]
@@ -149,7 +149,7 @@ pub struct CliUpgradeSa1s {
 }
 
 /// Convert an SA1s-Booths file from old SA1s to new (e.g. 2011 to 2016 ASGS)
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 pub struct CliUpgradeBooths {
     /// Indicate lack of header row for input file
     #[clap(long)]
@@ -169,7 +169,7 @@ pub struct CliUpgradeBooths {
 }
 
 /// Generate a configuration file interactively, possibly using an existing file as a basis.
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 #[clap(
     after_help = "Note: Options marked * will be asked for interactively if not specified. (Other options are helpful, but not required.)"
 )]
@@ -212,7 +212,7 @@ pub struct CliConfigure {
 }
 
 /// List scenarios from the configuration file.
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 #[clap(
     after_help = "Scenario tables are printed to standard output. If that's a terminal, they'll be pretty-printed with elastic tabstops. If that's a pipe or file, they'll be tab-separated to make further processing as straightforward as possible."
 )]
@@ -223,7 +223,7 @@ pub struct CliList {
 }
 
 /// Run scenarios from the configuration file.
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug, PartialEq, Eq)]
 pub struct CliRun {
     /// Run a specific phase of analysis
     #[clap(long, arg_enum, default_value_t = CliRunPhase::All)]
@@ -242,7 +242,7 @@ pub struct CliRun {
     pub configfile: PathBuf,
 }
 
-#[derive(ArgEnum, Debug, PartialEq, Clone)]
+#[derive(ArgEnum, Debug, PartialEq, Eq, Clone)]
 pub enum CliRunPhase {
     /// Run all phases (default)
     All,
@@ -269,10 +269,7 @@ pub fn run(args: CliRun) -> color_eyre::eyre::Result<()> {
         let scenario = cfg
             .get(scen_name)
             .with_context(|| {
-                format!(
-                    "Requested scenario {} not found in configuration file.",
-                    scen_name
-                )
+                format!("Requested scenario {scen_name} not found in configuration file.")
             })
             .with_suggestion(|| {
                 format!(
@@ -398,7 +395,7 @@ pub fn actual(m: CliCommands) -> color_eyre::eyre::Result<()> {
                 FILE.map_or_else(data::examine_txt, |x| data::examine_html(&x));
             }
         },
-        Example(sm) => println!("{}", sm),
+        Example(sm) => println!("{sm}"),
         License => print_license(),
         List(sm) => config::list_scenarios(&sm.configfile)?,
         Readme => println!("{}", include_str!("../README.md")),

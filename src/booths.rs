@@ -431,7 +431,7 @@ pub fn make_candidate_info(
     // A mapping between a party ID and a BTL candidate number
     let mut groups_below: HashMap<usize, Vec<usize>> = HashMap::new();
 
-    for (party, cand_list) in parties.iter() {
+    for (party, cand_list) in parties {
         let mut party_cand_nums = Vec::new();
         let mut above_cands = Vec::new();
         let mut below_cands = Vec::new();
@@ -451,7 +451,7 @@ pub fn make_candidate_info(
         }
         let p_idx = *party_indices
             .get(party.as_str())
-            .with_context(|| format!("The party/group {} is missing from party_indices", party))?;
+            .with_context(|| format!("The party/group {party} is missing from party_indices"))?;
         groups.insert(p_idx, party_cand_nums);
         groups_above.insert(p_idx, above_cands);
         groups_below.insert(p_idx, below_cands);
@@ -461,7 +461,7 @@ pub fn make_candidate_info(
         let mut a: Vec<(&str, usize)> = Vec::new();
         a.extend(cand_nums);
         a.sort_by(|&(_, a), &(_, b)| a.cmp(&b));
-        a.iter().map(|(s, u)| format!("{:4}\t{}", u, s)).join("\n")
+        a.iter().map(|(s, u)| format!("{u:4}\t{s}")).join("\n")
     });
     trace!("Full Groups: {:?}", groups);
     trace!("Above Starts At: {}", above_start);
@@ -613,7 +613,7 @@ pub fn distribute_preference(
 ) -> usize {
     bests.clear();
     order.clear();
-    for (group_num, candidate_nums) in groups.iter() {
+    for (group_num, candidate_nums) in groups {
         // For each group, iterate over its candidates and get the best-preferenced.
         let mut cur_best = cands_count;
         for i in candidate_nums {
@@ -661,7 +661,7 @@ pub fn aggregate_specials(
 
     let mut to_remove = Vec::new();
 
-    for (bk, bv) in booth_counts.iter() {
+    for (bk, bv) in &*booth_counts {
         for w in &NON_BOOTH_CONVERT {
             // hoisting for file order
             let divbooth = (
@@ -753,7 +753,7 @@ pub fn write_output(
             br.Longitude.clone(),
         ];
         let mut total = 0;
-        for i in bv.iter() {
+        for i in bv {
             bdeets.push(i.to_string());
             total += *i;
         }
@@ -766,7 +766,7 @@ pub fn write_output(
 
     for (bk, bv) in division_specials {
         let mut bdeets: Vec<String> =
-            vec!["".to_string(), bk.0, bk.1, "".to_string(), "".to_string()];
+            vec![String::new(), bk.0, bk.1, String::new(), String::new()];
 
         let mut total = 0;
         for i in bv {

@@ -302,9 +302,7 @@ where
         }
         //println!("{:?}", cand_record);
 
-        bigdict
-            .entry(cand_record.state_ab)
-            .or_insert_with(BallotPaper::new);
+        bigdict.entry(cand_record.state_ab).or_default();
 
         if !bigdict
             .get(&cand_record.state_ab)
@@ -494,10 +492,8 @@ impl FilteredCandidate {
             let s = self.filter.find(&self.ticket).unwrap();
             ticket = term::decorate_range(&ticket, s.range(), term::UNDERLINE);
         }
-        format!(
-            "{}\t{}\t{}\t{}\t{}",
-            surname, ballot_given_nm, ballot_number, party, ticket
-        ) // no semicolon here, we're returning
+        format!("{surname}\t{ballot_given_nm}\t{ballot_number}\t{party}\t{ticket}")
+        // no semicolon here, we're returning
     }
 }
 
@@ -512,8 +508,8 @@ pub fn filter_candidates(
         .case_insensitive(true)
         .build()
         .unwrap();
-    for (tk, cands) in candsdict.get(&state).unwrap().iter() {
-        for (_balnum, cv) in cands.iter() {
+    for (tk, cands) in candsdict.get(&state).unwrap() {
+        for cv in cands.values() {
             // OK, field by field
             let mut cands_matches = [false; 5];
             cands_matches[0] = filt.is_match(&cv.surname);
@@ -624,7 +620,7 @@ where
     T: Read + Seek,
 {
     const ZIP_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x03, 0x04];
-    let pos = infile.seek(SeekFrom::Current(0))?;
+    let pos = infile.stream_position()?;
     let mut buffer: [u8; 4] = [0; 4];
     let bytes_read = infile.read(&mut buffer)?;
     infile
@@ -648,7 +644,7 @@ pub fn get_zip_writer_to_path(
     inner_ext: &str,
 ) -> Result<zip::ZipWriter<File>> {
     let mut outfile = ZipWriter::new(
-        File::create(&outpath.with_extension("zip")).expect("Couldn't create new output file"),
+        File::create(outpath.with_extension("zip")).expect("Couldn't create new output file"),
     );
     outfile.start_file(
         outpath
@@ -668,7 +664,7 @@ pub fn get_zip_writer_to_path(
 /// <https://www.reddit.com/r/rust/comments/fyjmbv/n00b_question_how_to_get_user_input/fn0d5va/>
 pub fn input(prompt: &str) -> std::io::Result<String> {
     let mut stdout = stdout();
-    write!(&mut stdout, "{}", prompt)?;
+    write!(&mut stdout, "{prompt}")?;
     stdout.flush()?;
     let mut response = String::new();
     stdin().read_line(&mut response)?;
@@ -691,7 +687,7 @@ mod tests {
     fn test_ballot_number_conversions() {
         assert_eq!("AE", 31.to_ticket());
         assert_eq!(31, "AE".to_number());
-        assert_eq!("123 thousand", 123000.pretty_number());
+        assert_eq!("123 thousand", 123_000.pretty_number());
     }
     #[test]
     fn test_state_ab_conversions() {

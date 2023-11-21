@@ -184,9 +184,8 @@ fn make_districts(
         // 3. Scale (1) to fit (2)
         // 4. is along for the ride?
 
-        let sa1_npps = match sa1_prefs.get(id) {
-            Some(x) => x,
-            _ => continue,
+        let Some(sa1_npps) = sa1_prefs.get(id) else {
+            continue;
         };
         let mut multiplier = 1.0_f64;
 
