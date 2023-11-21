@@ -141,6 +141,7 @@ Refactor todo: have two binaries.
     path = "src/gui.rs"
 
 Each of which has its own entrypoint to common code.
+<<<<<<< Updated upstream
 
 ## Debian/Ubuntu notes
 

@@ -14,10 +14,10 @@ atk-sys	0.15.1	The gtk-rs Project Developers	https://github.com/gtk-rs/gtk3-rs	M
 atomic_refcell	0.1.13	Bobby Holley <bobbyholley@gmail.com>	https://github.com/bholley/atomic_refcell	Apache-2.0 OR MIT		Threadsafe RefCell
 atty	0.2.14	softprops <d.tangren@gmail.com>	https://github.com/softprops/atty	MIT		A simple interface for querying atty
 backtrace	0.3.69	The Rust Project Developers	https://github.com/rust-lang/backtrace-rs	Apache-2.0 OR MIT		A library to acquire a stack trace (backtrace) at runtime in a Rust program.
-base64	0.13.1	Alice Maz <alice@alicemaz.com>|Marshall Pierce <marshall@mpierce.org>	https://github.com/marshallpierce/rust-base64	Apache-2.0 OR MIT		encodes and decodes base64 as bytes or utf8
 base64	0.21.5	Alice Maz <alice@alicemaz.com>|Marshall Pierce <marshall@mpierce.org>	https://github.com/marshallpierce/rust-base64	Apache-2.0 OR MIT		encodes and decodes base64 as bytes or utf8
 base64ct	1.6.0	RustCrypto Developers	https://github.com/RustCrypto/formats/tree/master/base64ct	Apache-2.0 OR MIT		"Pure Rust implementation of Base64 (RFC 4648) which avoids any usages of data-dependent branches/LUTs and thereby provides portable ""best effort"" constant-time operation and embedded-friendly no_std support"
 bitflags	1.3.2	The Rust Project Developers	https://github.com/bitflags/bitflags	Apache-2.0 OR MIT		A macro to generate structures which behave like bitflags.
+bitflags	2.4.1	The Rust Project Developers	https://github.com/bitflags/bitflags	Apache-2.0 OR MIT		A macro to generate structures which behave like bitflags.
 block	0.1.6	Steven Sheldon	http://github.com/SSheldon/rust-block	MIT		Rust interface for Apple's C language extension of blocks.
 block-buffer	0.10.4	RustCrypto Developers	https://github.com/RustCrypto/utils	Apache-2.0 OR MIT		Buffer type for block processing of data
 bumpalo	3.14.0	Nick Fitzgerald <fitzgen@gmail.com>	https://github.com/fitzgen/bumpalo	Apache-2.0 OR MIT		A fast bump allocation arena for Rust.
@@ -67,12 +67,13 @@ deranged	0.3.9	Jacob Pratt <jacob@jhpratt.dev>	https://github.com/jhpratt/derang
 digest	0.10.7	RustCrypto Developers	https://github.com/RustCrypto/traits	Apache-2.0 OR MIT		Traits for cryptographic hash functions and message authentication codes
 dispatch	0.2.0	Steven Sheldon	http://github.com/SSheldon/rust-dispatch	MIT		Rust wrapper for Apple's Grand Central Dispatch.
 dlib	0.5.2	Elinor Berger <elinor@safaradeg.net>	https://github.com/elinorbgr/dlib	MIT		Helper macros for handling manually loading optional system libraries.
+document-features	0.2.7	Slint Developers <info@slint-ui.com>	https://github.com/slint-ui/document-features	Apache-2.0 OR MIT		Extract documentation for the feature flags from comments in Cargo.toml
 downcast-rs	1.2.0	Ashish Myles <marcianx@gmail.com>|Runji Wang <wangrunji0408@163.com>	https://github.com/marcianx/downcast-rs	Apache-2.0 OR MIT		Trait object downcasting support using only safe Rust. It supports type parameters, associated types, and type constraints.
 eframe	0.18.0	Emil Ernerfeldt <emil.ernerfeldt@gmail.com>	https://github.com/emilk/egui/tree/master/eframe	Apache-2.0 OR MIT		egui framework - write GUI apps that compiles to web and/or natively
 egui	0.18.1	Emil Ernerfeldt <emil.ernerfeldt@gmail.com>	https://github.com/emilk/egui	Apache-2.0 OR MIT		An easy-to-use immediate mode GUI that runs on both web and native
 egui-winit	0.18.0	Emil Ernerfeldt <emil.ernerfeldt@gmail.com>	https://github.com/emilk/egui/tree/master/egui-winit	Apache-2.0 OR MIT		Bindings for using egui with winit
 egui_glow	0.18.1	Emil Ernerfeldt <emil.ernerfeldt@gmail.com>	https://github.com/emilk/egui/tree/master/egui_glow	Apache-2.0 OR MIT		Bindings for using egui natively using the glow library
-ehttp	0.2.0	Emil Ernerfeldt <emil.ernerfeldt@gmail.com>	https://github.com/emilk/ehttp	Apache-2.0 OR MIT		Minimal HTTP client for both native and WASM
+ehttp	0.3.1	Emil Ernerfeldt <emil.ernerfeldt@gmail.com>	https://github.com/emilk/ehttp	Apache-2.0 OR MIT		Minimal HTTP client for both native and WASM
 either	1.9.0	bluss	https://github.com/bluss/either	Apache-2.0 OR MIT		The enum `Either` with variants `Left` and `Right` is a general purpose sum type with two cases.
 emath	0.18.0	Emil Ernerfeldt <emil.ernerfeldt@gmail.com>	https://github.com/emilk/egui/tree/master/emath	Apache-2.0 OR MIT		Minimal 2D math library for GUI work
 epaint	0.18.1	Emil Ernerfeldt <emil.ernerfeldt@gmail.com>	https://github.com/emilk/egui/tree/master/epaint	Apache-2.0 OR MIT		Minimal 2D graphics library for GUI work
@@ -118,6 +119,7 @@ inout	0.1.3	RustCrypto Developers	https://github.com/RustCrypto/utils	Apache-2.0
 instant	0.1.12	sebcrozet <developer@crozet.re>	https://github.com/sebcrozet/instant	BSD-3-Clause		A partial replacement for std::time::Instant that works on WASM too.
 itertools	0.10.5	bluss	https://github.com/rust-itertools/itertools	Apache-2.0 OR MIT		Extra iterator adaptors, iterator methods, free functions, and macros.
 itertools	0.11.0	bluss	https://github.com/rust-itertools/itertools	Apache-2.0 OR MIT		Extra iterator adaptors, iterator methods, free functions, and macros.
+itertools	0.12.0	bluss	https://github.com/rust-itertools/itertools	Apache-2.0 OR MIT		Extra iterator adaptors, iterator methods, free functions, and macros.
 itoa	1.0.9	David Tolnay <dtolnay@gmail.com>	https://github.com/dtolnay/itoa	Apache-2.0 OR MIT		Fast integer primitive to string conversion
 jni	0.19.0	Josh Chase <josh@prevoty.com>	https://github.com/jni-rs/jni-rs	Apache-2.0 OR MIT		Rust bindings to the JNI
 jni-sys	0.3.0	Steven Fackler <sfackler@gmail.com>	https://github.com/sfackler/rust-jni-sys	Apache-2.0 OR MIT		Rust definitions corresponding to jni.h
@@ -128,6 +130,7 @@ libc	0.2.150	The Rust Project Developers	https://github.com/rust-lang/libc	Apach
 libloading	0.7.4	Simonas Kazlauskas <libloading@kazlauskas.me>	https://github.com/nagisa/rust_libloading/	ISC		Bindings around the platform's dynamic library loading primitives with greatly improved memory safety.
 libloading	0.8.1	Simonas Kazlauskas <libloading@kazlauskas.me>	https://github.com/nagisa/rust_libloading/	ISC		Bindings around the platform's dynamic library loading primitives with greatly improved memory safety.
 linkify	0.9.0	Robin Stocker <robin@nibor.org>	https://github.com/robinst/linkify	Apache-2.0 OR MIT		Finds URLs and email addresses in plain text. Takes care to get the boundaries right with surrounding punctuation like parentheses.
+litrs	0.2.3	Lukas Kalbertodt <lukas.kalbertodt@gmail.com>	https://github.com/LukasKalbertodt/litrs/	Apache-2.0 OR MIT		Parse and inspect Rust literals (i.e. tokens in the Rust programming language representing fixed values). Particularly useful for proc macros, but can also be used outside of a proc-macro context.
 lock_api	0.4.11	Amanieu d'Antras <amanieu@gmail.com>	https://github.com/Amanieu/parking_lot	Apache-2.0 OR MIT		Wrappers to create fully-featured Mutex and RwLock types. Compatible with no_std.
 log	0.4.20	The Rust Project Developers	https://github.com/rust-lang/log	Apache-2.0 OR MIT		A lightweight logging facade for Rust
 malloc_buf	0.0.6	Steven Sheldon	https://github.com/SSheldon/malloc_buf	MIT		Structs for handling malloc'd memory passed to Rust.
@@ -149,7 +152,7 @@ nix	0.22.3	The nix-rust Project Developers	https://github.com/nix-rust/nix	MIT		
 nix	0.24.3	The nix-rust Project Developers	https://github.com/nix-rust/nix	MIT		Rust friendly bindings to *nix APIs
 nohash-hasher	0.2.0	Parity Technologies <admin@parity.io>	https://github.com/paritytech/nohash-hasher	Apache-2.0 OR MIT		An implementation of `std::hash::Hasher` which does not hash at all.
 nom	7.1.3	contact@geoffroycouprie.com	https://github.com/Geal/nom	MIT		A byte-oriented, zero-copy, parser combinators library
-nparty	0.1.3	Alex Jago <4475543+alexjago@users.noreply.github.com>	https://github.com/alexjago/nparty	Apache-2.0 OR MIT		N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis.
+nparty	0.1.4	Alex Jago <4475543+alexjago@users.noreply.github.com>	https://github.com/alexjago/nparty	Apache-2.0 OR MIT		N-Party-Preferred distribution of Australian Senate ballots and subsequent analysis.
 nu-ansi-term	0.46.0	ogham@bsago.me|Ryan Scheel (Havvy) <ryan.havvy@gmail.com>|Josh Triplett <josh@joshtriplett.org>|The Nushell Project Developers	https://github.com/nushell/nu-ansi-term	MIT		Library for ANSI terminal colors and styles (bold, underline)
 num-traits	0.2.17	The Rust Project Developers	https://github.com/rust-num/num-traits	Apache-2.0 OR MIT		Numeric traits for generic mathematics
 num_enum	0.5.11	Daniel Wagner-Hall <dawagner@gmail.com>|Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>|Vincent Esche <regexident@gmail.com>	https://github.com/illicitonion/num_enum	Apache-2.0 OR BSD-3-Clause OR MIT		Procedural macros to make inter-operation between primitives and enums easier.
@@ -191,7 +194,7 @@ regex-automata	0.4.3	The Rust Project Developers|Andrew Gallant <jamslam@gmail.c
 regex-syntax	0.8.2	The Rust Project Developers|Andrew Gallant <jamslam@gmail.com>	https://github.com/rust-lang/regex/tree/master/regex-syntax	Apache-2.0 OR MIT		A regular expression parser.
 rfd	0.10.0	Poly <marynczak.bartlomiej@gmail.com>	https://github.com/PolyMeilex/rfd	MIT		Rusty File Dialog
 ring	0.17.5	Brian Smith <brian@briansmith.org>	https://github.com/briansmith/ring		LICENSE	Safe, fast, small crypto using Rust.
-ron	0.7.1	Christopher Durham <cad97@cad97.com>|Dzmitry Malyshau <kvarkus@gmail.com>|Thomas Schaller <torkleyy@gmail.com>	https://github.com/ron-rs/ron	Apache-2.0 OR MIT		Rusty Object Notation
+ron	0.8.1	Christopher Durham <cad97@cad97.com>|Dzmitry Malyshau <kvarkus@gmail.com>|Thomas Schaller <torkleyy@gmail.com>|Juniper Tyree <juniper.tyree@helsinki.fi>	https://github.com/ron-rs/ron	Apache-2.0 OR MIT		Rusty Object Notation
 rustc-demangle	0.1.23	Alex Crichton <alex@alexcrichton.com>	https://github.com/alexcrichton/rustc-demangle	Apache-2.0 OR MIT		Rust compiler symbol demangling.
 rustls	0.21.9		https://github.com/rustls/rustls	Apache-2.0 OR ISC OR MIT		Rustls is a modern TLS library written in Rust.
 rustls-webpki	0.101.7		https://github.com/rustls/webpki	ISC		Web PKI X.509 Certificate Verification.
