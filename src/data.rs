@@ -53,8 +53,7 @@ fn make_html(texts: &BTreeMap<String, DlItems>) -> String {
         for (state, url) in &item.formal_prefs {
             writeln!(
                 listy,
-                "<li><a href=\"{}\">Formal Preferences for {}</a></li>",
-                url, state
+                "<li><a href=\"{url}\">Formal Preferences for {state}</a></li>",
             )
             .unwrap();
         }
@@ -87,7 +86,7 @@ pub fn examine_txt() {
             item.polling_places, item.sa1s_pps, item.candidates, item.political_parties
         );
         for (_, url) in item.formal_prefs {
-            println!("{}", url);
+            println!("{url}");
         }
     }
 }
@@ -123,7 +122,7 @@ pub fn download(dldir: &Path) -> color_eyre::eyre::Result<()> {
             if let Ok(linkpath) = url::Url::parse(&link) {
                 let aspath = PathBuf::from(linkpath.path());
                 let mut dlto = PathBuf::from(&year_dir);
-                dlto.push(&aspath.file_name().unwrap());
+                dlto.push(aspath.file_name().unwrap());
                 // globfn omitted for now
                 if !dlto.is_file() {
                     eprintln!("Downloading: {}", &dlto.display());
@@ -150,7 +149,7 @@ pub fn download(dldir: &Path) -> color_eyre::eyre::Result<()> {
     if skips == 0 {
         eprintln!("Done!");
     } else {
-        eprintln!("Done! Skipped {} already-downloaded files.", skips);
+        eprintln!("Done! Skipped {skips} already-downloaded files.");
     }
     Ok(())
 }
