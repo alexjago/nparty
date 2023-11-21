@@ -233,7 +233,7 @@ pub fn list_scenarios(cfgpath: &Path) -> Result<()> {
         output.push(format!("{name}\t{groups}\t{state}\t{year}"));
     }
 
-    if atty::is(atty::Stream::Stdout) {
+    if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
         let mut tw = TabWriter::new(vec![]);
         writeln!(&mut tw, "{headers}")?;
         for i in output {
@@ -462,8 +462,7 @@ pub fn cli_scenarios(
             groups.keys().len(),
             groups.keys().join("")
         );
-        let keepit =
-            input(&format!("Use suggested scenario code {name} [Y]/n: "))?.to_uppercase();
+        let keepit = input(&format!("Use suggested scenario code {name} [Y]/n: "))?.to_uppercase();
         if !(keepit.starts_with('Y') || keepit.is_empty()) {
             name = String::new();
             while name.is_empty() {

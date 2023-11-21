@@ -1524,7 +1524,6 @@ name = "nparty"
 version = "0.1.3"
 dependencies = [
  "Inflector",
- "atty",
  "clap",
  "clap-verbosity-flag",
  "color-eyre",
