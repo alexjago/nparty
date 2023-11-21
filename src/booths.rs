@@ -558,11 +558,12 @@ pub fn handle_below(
 
             let g = below_groups[i];
             if g < usize::MAX && v < order[g] {
-                // ^^^ 2023-11-21 BUG with 2022's ACT_3CP
+                // ^^^ 2023-11-21 fixed bug with 2022's ACT_3CP
                 // g can be greater than order.len()
                 // (specifically because order was empty)
                 // fixed an issue where candidates weren't allocated correctly
                 // but we can still get a 0/0 here
+                // also changed the call to order.resize() above
                 order[g] = v;
             }
         }
@@ -765,8 +766,7 @@ pub fn write_output(
     wtr.flush().context("error writing booths")?;
 
     for (bk, bv) in division_specials {
-        let mut bdeets: Vec<String> =
-            vec![String::new(), bk.0, bk.1, String::new(), String::new()];
+        let mut bdeets: Vec<String> = vec![String::new(), bk.0, bk.1, String::new(), String::new()];
 
         let mut total = 0;
         for i in bv {
