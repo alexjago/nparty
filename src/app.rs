@@ -101,6 +101,7 @@ impl std::fmt::Display for CliExample {
 pub enum CliUpgrade {
     Prefs(CliUpgradePrefs),
     Sa1s(CliUpgradeSa1s),
+    Booths(CliUpgradeBooths),
 }
 
 /// Upgrade a preference file to the latest format (e.g. 2016 to 2019)
@@ -143,6 +144,26 @@ pub struct CliUpgradeSa1s {
     pub input: PathBuf,
 
     /// output file; columns will be 'SA1_Id', 'Dist_Name', 'Pop', 'Pop_Share'
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
+    pub output: PathBuf,
+}
+
+/// Convert an SA1s-Booths file from old SA1s to new (e.g. 2011 to 2016 ASGS)
+#[derive(Parser, Debug, PartialEq)]
+pub struct CliUpgradeBooths {
+    /// Indicate lack of header row for input file
+    #[clap(long)]
+    pub no_infile_headers: bool,
+
+    /// Columns should be: 'SA1_7DIGITCODE_old', 'SA1_7DIGITCODE_new', 'RATIO'
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
+    pub correspondence_file: PathBuf,
+
+    /// input file; columns should be 'year', 'state_ab', 'div_nm', 'SA1_id' (or 'ccd_id'), 'pp_id', 'pp_nm', 'votes'
+    #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
+    pub input: PathBuf,
+
+    /// output file; columns will be same as input file
     #[clap(parse(from_os_str), value_hint = ValueHint::FilePath)]
     pub output: PathBuf,
 }
@@ -385,6 +406,7 @@ pub fn actual(m: CliCommands) -> color_eyre::eyre::Result<()> {
         Upgrade(sm) => match sm {
             CliUpgrade::Prefs(ssm) => upgrades::do_upgrade_prefs(ssm)?,
             CliUpgrade::Sa1s(ssm) => upgrades::do_upgrade_sa1s(ssm)?,
+            CliUpgrade::Booths(ssm) => upgrades::do_upgrade_booths(ssm)?,
         },
     }
     Ok(())

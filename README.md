@@ -144,6 +144,23 @@ Header names aren't important - after all, eventually the years will change - bu
 
 This spreadsheet shall be referred to `correspondencefile`. You can use this spreadsheet with `nparty upgrade sa1s correspondencefile [infile] [outfile]` to turn an `SA1s_Dists` defined in terms of outdated SA1s, to one defined in terms of newer SA1s.
 
+
+An additional complexity is that from 2021 onward, the ABS no longer has both a 7 digit and 11 digit version of the SA1 code. The shorter version was generally used by the AEC. `nparty upgrade booths` will attempt to deal with this.
+
+### Booth correspondences
+
+`nparty upgrade booths` can convert an AEC polling-place-to-SA1 file to a newer ASGS standard directly. It can handle mixed 7-digit and 11-digit codes.
+
+The algorithm is essentially as follows: 
+
+```sql
+select year, state_ab, div_nm, new as ccd_id, pp_id, pp_nm, sum(votes * ratio)
+from Booths, Corrs
+join on Corrs.old = Booths.ccd_id
+group by year, state_ab, div_nm, new, pp_id, pp_nm;
+```
+
+
 # Next Steps
 
 Having done all that, you can [simulate elections](https://abjago.net/4PP-QLD-projections-from-senate-results/predictor.html) with more precise knowledge of how people preferenced!

@@ -17,6 +17,8 @@ use std::io::{self, Write};
 use std::path::Path;
 use tracing::info;
 
+// TODO: isn't this phase basically all doable in SQL, but if so, does that preclude a future WASMfication?
+
 /// Load up SA1 NPP data (step 1)
 ///
 /// Returns both the data keyed by the first column (SA1 ID), and the file headers

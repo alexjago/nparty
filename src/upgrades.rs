@@ -1,7 +1,11 @@
 //! Ballot-file format upgrades and SA1 geography upgrades.
+//!
+//! Copyright 2017-2023 Alex Jago <alex@abjago.net>
+//! Released under the MIT or Apache 2.0 licenses, at your option.
+
 use color_eyre::eyre::{bail, Context, ContextCompat, Result};
 
-use crate::app::CliUpgradeSa1s;
+use crate::app::{CliUpgradeBooths, CliUpgradeSa1s};
 use crate::utils::{
     get_zip_writer_to_path, open_csvz_from_path, read_candidates, CandsData, StateAb, ToTicket,
 };
@@ -195,10 +199,7 @@ pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> color_eyre::eyre::Result<()> {
             new: r[1].to_string(),
             ratio: r[2].parse::<f64>().ok().unwrap_or(0.0_f64),
         };
-        corrs
-            .entry(row.old)
-            .or_insert_with(Vec::new)
-            .push((row.new, row.ratio));
+        corrs.entry(row.old).or_default().push((row.new, row.ratio));
     }
 
     // 2. Read and convert the input file
@@ -237,7 +238,7 @@ pub fn do_upgrade_sa1s(args: CliUpgradeSa1s) -> color_eyre::eyre::Result<()> {
             for (new_sa1, ratio) in split.iter() {
                 let e = converted
                     .entry(new_sa1.clone())
-                    .or_insert_with(BTreeMap::new)
+                    .or_default()
                     .entry(row.Dist_Name.clone())
                     .or_default();
                 *e += row.Pop * ratio;
@@ -314,7 +315,7 @@ pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> color_eyre::eyre::
         if outpath.is_dir() {
             paths.push((
                 ip,
-                outpath.join(&inpath.file_name().context("no file name")?),
+                outpath.join(inpath.file_name().context("no file name")?),
             ));
         } else {
             paths.push((ip, outpath));
@@ -334,8 +335,8 @@ pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> color_eyre::eyre::
 
         if era == 2016 {
             // Test if upgrade already exists
-            let im = metadata(&ipath).context("In-path doesn't seem to exist?")?;
-            let om = metadata(&opath);
+            let im = metadata(ipath).context("In-path doesn't seem to exist?")?;
+            let om = metadata(opath);
             let out_time = om.as_ref().map_or(SystemTime::UNIX_EPOCH, |x| {
                 x.modified().unwrap_or(SystemTime::UNIX_EPOCH)
             });
@@ -355,6 +356,231 @@ pub fn do_upgrade_prefs(args: crate::app::CliUpgradePrefs) -> color_eyre::eyre::
         } else {
             eprintln!("No upgrade available - is it already the latest?");
         }
+    }
+    Ok(())
+}
+
+/// Performs the `upgrade booths` subcommand.
+/// TODO: is this pretty basic SQL? Anything else? Well, upgrading SA1s is too but prefs is more complex
+///     select year, state_ab, div_nm, new as ccd_id, pp_id, pp_nm, sum(votes * ratio)
+///     from Booths, Corrs
+///     join on Corrs.old = Booths.ccd_id
+///     group by year, state_ab, div_nm, new, pp_id, pp_nm;
+/// Well, except that we consider Corrs' rows by position, rather than by name
+/// Also one file might be in 7 digit codes and the other in 11 digit codes
+pub fn do_upgrade_booths(args: CliUpgradeBooths) -> color_eyre::eyre::Result<()> {
+    #![allow(clippy::too_many_lines)]
+    // 1. Read the correspondence file into a map
+
+    struct CorrespondenceRow {
+        old: String,
+        new: String,
+        ratio: f64,
+    }
+    // "RATIO of SA1_7DIGITCODE_old is in SA1_7DIGITCODE_new"
+
+    // We expect an SA1 code to be either 7 digits or 11 digits (ASGS 1 or 2)
+    // or just 11 digits (ASGS 3) with the AEC typically using the 7 digit codes
+    // since strings of different lengths don't usually compare equal, we will
+    // construct three parallel lookup tables depending on length
+    let mut corrs_7: BTreeMap<String, Vec<(String, f64)>> = BTreeMap::new();
+    let mut corrs_11: BTreeMap<String, Vec<(String, f64)>> = BTreeMap::new();
+    let mut corrs_all: BTreeMap<String, Vec<(String, f64)>> = BTreeMap::new();
+
+    let mut cf = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_path(&args.correspondence_file)?;
+    for record in cf.records() {
+        let r = record?;
+        // positional deserialise
+        let row = CorrespondenceRow {
+            old: r[0].to_string(),
+            new: r[1].to_string(),
+            ratio: r[2].parse::<f64>().ok().unwrap_or(0.0_f64),
+        };
+
+        // the 7 digit code is [ST 1] [SA2 4] [SA1 2]
+        // the 11 digit code is [ST 1] [SA4 2] [SA3 2] [SA2 4] [SA1 2]
+        // So if we have an 11 digit code we can create a 7 digit code too
+        match row.old.len() {
+            7 => corrs_7
+                .entry(row.old.clone())
+                .or_default()
+                .push((row.new.clone(), row.ratio)),
+            11 => {
+                corrs_11
+                    .entry(row.old.clone())
+                    .or_default()
+                    .push((row.new.clone(), row.ratio));
+                // also push a truncated code
+                let trunc = format!("{}{}", &row.old[..1], &row.old[5..]);
+                corrs_7
+                    .entry(trunc)
+                    .or_default()
+                    .push((row.new.clone(), row.ratio));
+            }
+            _ => {}
+        };
+        corrs_all
+            .entry(row.old)
+            .or_default()
+            .push((row.new, row.ratio));
+    }
+
+    // eprintln!("{} entries in   7-digit correspondence file", corrs_7.len());
+    // eprintln!(
+    //     "{} entries in  11-digit correspondence file",
+    //     corrs_11.len()
+    // );
+    // eprintln!(
+    //     "{} entries in any-digit correspondence file",
+    //     corrs_all.len()
+    // );
+
+    // 2. Read and convert the input file
+
+    #[derive(Debug, Serialize, Deserialize, Clone)]
+    struct Sa1sBooth {
+        year: String,
+        state_ab: String,
+        div_nm: String,
+        #[serde(alias = "SA1_id")]
+        ccd_id: String,
+        pp_id: String,
+        pp_nm: String,
+        votes: f64,
+    }
+
+    impl Ord for Sa1sBooth {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            (
+                &self.year,
+                &self.state_ab,
+                &self.div_nm,
+                &self.ccd_id,
+                &self.pp_id,
+                &self.pp_nm,
+            )
+                .cmp(&(
+                    &other.year,
+                    &other.state_ab,
+                    &other.div_nm,
+                    &other.ccd_id,
+                    &other.pp_id,
+                    &other.pp_nm,
+                ))
+        }
+    }
+
+    impl PartialOrd for Sa1sBooth {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl PartialEq for Sa1sBooth {
+        fn eq(&self, other: &Sa1sBooth) -> bool {
+            (
+                &self.year,
+                &self.state_ab,
+                &self.div_nm,
+                &self.ccd_id,
+                &self.pp_id,
+                &self.pp_nm,
+            )
+                .eq(&(
+                    &other.year,
+                    &other.state_ab,
+                    &other.div_nm,
+                    &other.ccd_id,
+                    &other.pp_id,
+                    &other.pp_nm,
+                ))
+        }
+    }
+
+    impl Eq for Sa1sBooth {}
+
+    // {NEW_SA1 : {DivBooth: Votes}}
+    let mut converted: BTreeMap<String, BTreeMap<Sa1sBooth, f64>> = BTreeMap::new();
+
+    let mut oldf = csv::ReaderBuilder::new()
+        .has_headers(!args.no_infile_headers)
+        .from_path(&args.input)?;
+
+    // Previously, we deserialised by position, not by header name
+
+    // let mut recordcount = 0;
+    // let mut desercount = 0;
+    let mut unmatchcount = 0;
+    let mut unmatchvote = 0_f64;
+
+    for record in oldf.records() {
+        // recordcount += 1;
+        let r = record?;
+        let row: Sa1sBooth = r.deserialize(None)?;
+
+        // desercount += 1;
+
+        // "RATIO of SA1_7DIGITCODE_old is in SA1_7DIGITCODE_new"
+        // we need to deal with the possibility of the correspondence key being the other length
+        // the 7 digit code is [ST 1] [SA2 4] [SA1 2]
+        // the 11 digit code is [ST 1] [SA4 2] [SA3 2] [SA2 4] [SA1 2]
+        let old_sa1 = row.ccd_id.clone();
+        let (old_sa1_7, old_sa1_11) = match old_sa1.len() {
+            7 => (Some(old_sa1.clone()), None),
+            11 => (
+                Some(format!("{}{}", &old_sa1[..1], &old_sa1[5..])),
+                Some(old_sa1.clone()),
+            ),
+            _ => (None, None),
+        };
+
+        if let Some(split) = old_sa1_11
+            .and_then(|k| corrs_11.get(&k))
+            .or_else(|| old_sa1_7.and_then(|k| corrs_7.get(&k)))
+            .or_else(|| corrs_all.get(&old_sa1))
+        {
+            for (new_sa1, ratio) in split {
+                let mut updated = row.clone();
+                updated.ccd_id = new_sa1.clone();
+                updated.votes = row.votes * ratio;
+                let e = converted
+                    .entry(new_sa1.clone())
+                    .or_default()
+                    .entry(updated)
+                    .or_default();
+                *e += row.votes * ratio;
+                // we'll have to fill in PopShare later
+            }
+        } else {
+            // eprintln!("Could not find a match for:\n{row:?}");
+            unmatchcount += 1;
+            unmatchvote += row.votes;
+        }
+    }
+
+    // eprintln!("{recordcount} old entries attempted conversion");
+    // eprintln!("{desercount} old entries deserialized successfully");
+    eprintln!("{unmatchcount} old entries could not be matched, totalling {unmatchvote} votes. These are probably voters with no fixed address or similar, especially if the ratio of entries to voters is close to 1.");
+    // eprintln!("{} entries in converted tree", converted.len());
+
+    // 3. Finalise and write results
+    let mut outf = csv::WriterBuilder::new()
+        .has_headers(true)
+        .from_path(args.output)?;
+    for (_, dists) in converted {
+        // let mut poptotal: f64 = dists.values().sum();
+        // if poptotal == 0.0 {
+        // poptotal = 1.0;
+        // }
+
+        for (d, p) in dists {
+            let mut outbooth = d.clone();
+            outbooth.votes = p;
+            outf.serialize(outbooth)?;
+        }
+        outf.flush()?;
     }
     Ok(())
 }
