@@ -53,7 +53,8 @@ fn non_booth_convert(input: &str) -> &str {
 
 // `let` can only be used in a function
 fn ttyjump() -> &'static str {
-    if atty::is(atty::Stream::Stderr) {
+    use std::io::IsTerminal;
+    if std::io::stderr().is_terminal() {
         term::TTYJUMP
     } else {
         ""
@@ -191,8 +192,8 @@ pub fn booth_npps(
             below_groups[*c + above_start - 1] = *g;
         }
     }
-    // eprintln!("groups_below: {:?}", groups_below);
-    // eprintln!("below_groups: {:?}", below_groups);
+    // trace!("groups_below: {:?}", groups_below);
+    // trace!("below_groups: {:?}", below_groups);
 
     /* ***** Start of main iteration ***** */
     info!("\tDistributing Preferences");
@@ -218,7 +219,7 @@ pub fn booth_npps(
         let divnm = interner.get_or_intern(std::str::from_utf8(&record[1])?);
         let boothnm = interner.get_or_intern(std::str::from_utf8(&record[2])?);
 
-        if (&record[1]).starts_with(b"---") {
+        if (record[1]).starts_with(b"---") {
             // ^^ This conditional might be inverted for testing; 2019+ files do NOT contain a `---` line.
             return Result::Err(eyre!("Preferences file is in the 2016 format."))
                 .suggestion("Upgrade the file to the 2019+ format with:\n\tnparty upgrade prefs");
@@ -347,7 +348,7 @@ pub fn load_polling_places(
     let pp_rdr_iter = pp_rdr.records();
     let mut row_count: usize = 0;
 
-    for result in pp_rdr_iter.skip(3) {
+    for result in pp_rdr_iter.skip(2) {
         row_count += 1;
         let record: BoothRecord = result?.deserialize(None)?;
         if record.State != state {
@@ -400,7 +401,7 @@ pub fn make_candidate_info(
             .join("\n")
     );
 
-    // The first ticket is labelled "A" and there are two candidates per ticket.
+    // The first ticket is labelled "A" and there are >= two candidates per ticket.
     // All tickets come before all candidates in the column order.
     // So the _second_ "A:", if it exists, is the initial BTL field.
     // If it doesn't exist then _all_ we have are UnGrouped candidates
@@ -440,7 +441,9 @@ pub fn make_candidate_info(
                 .context("missing cand_num")?
                 .to_owned();
             party_cand_nums.push(cn);
-            if cn > below_start {
+            if cn > (below_start - above_start) {
+                // remember, below_start and above_start are relative to the file headers
+                // NOT the candidate numbers
                 below_cands.push(cn);
             } else {
                 above_cands.push(cn);
@@ -461,9 +464,11 @@ pub fn make_candidate_info(
         a.iter().map(|(s, u)| format!("{:4}\t{}", u, s)).join("\n")
     });
     trace!("Full Groups: {:?}", groups);
+    trace!("Above Starts At: {}", above_start);
     trace!("ATL Groups: {:?}", groups_above);
     trace!("BTL Groups: {:?}", groups_below);
     trace!("Below Starts At: {}", below_start);
+    // trace! {"Prefs headers fixed, in bytes:\n{:#?}", prefs_headers_fixed};
 
     Ok((combinations, below_start, groups_above, groups_below))
 }
@@ -527,7 +532,7 @@ pub fn handle_below(
 ) -> Option<usize> {
     if record.len() > below_start {
         bests.clear();
-        order.resize(order.capacity(), usize::MAX);
+        order.resize(groups_count, usize::MAX); // trying this
         order.fill(usize::MAX);
         let mut btl_counts: [usize; 6] = [0; 6]; // NOTE: zero-indexing and potential fragility with wrapping adds.
                                                  // The latter is only a problem if there are more than usize::MAX candidates BTL
@@ -553,6 +558,11 @@ pub fn handle_below(
 
             let g = below_groups[i];
             if g < usize::MAX && v < order[g] {
+                // ^^^ 2023-11-21 BUG with 2022's ACT_3CP
+                // g can be greater than order.len()
+                // (specifically because order was empty)
+                // fixed an issue where candidates weren't allocated correctly
+                // but we can still get a 0/0 here
                 order[g] = v;
             }
         }
@@ -728,9 +738,13 @@ pub fn write_output(
         let bv = booth_counts
             .get(bk)
             .context("missing entry in `booth_counts`")?;
-        let br = booths
-            .get(bk)
-            .with_context(|| eyre!("It's really weird, but {:?} isn't in `booths`.", bk))?;
+        let br = booths.get(bk).with_context(|| {
+            eyre!(
+                "It's really weird, but {:?} (actually {:?}) isn't in `booths`.",
+                bk,
+                (interner.resolve(bk.0), interner.resolve(bk.1))
+            )
+        })?;
         let mut bdeets = vec![
             br.PollingPlaceID.to_string(),
             br.DivisionNm.clone(),
@@ -834,7 +848,7 @@ pub fn parse_u8_b10(input: &[u8]) -> usize {
                 // ascii 0
                 acc *= 10;
             }
-            49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 => acc = acc * 10 + ((*k - 48) as usize),
+            49..=57 => acc = acc * 10 + ((*k - 48) as usize),
             _ => continue,
         }
         // eprintln!("\t{k} {acc}");
