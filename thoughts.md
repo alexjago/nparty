@@ -90,6 +90,11 @@ That means we need to sniff formats somehow (`tree_magic`?), in a layered fashio
 - Test for whether and what kind of spreadsheet it is. If it's one that's not an xSV, in-memory convert it to CSV with `calamine` (write to another buffer I guess).
 - *Finally* pass that onto the main analysis bits. 
 
+### Upgrading SA1s vs upgrading districts
+
+* `nparty upgrade sa1s` should convert an `SA1_Prefs.csv`
+* `nparty upgrade dists` would be a better choice for what is currently `upgrade sa1s`
+
 ## "Version 2.0" processing flow
 
 TL;DR: factor out the deserialisation, the setup analysis, and the per-row analysis. 
