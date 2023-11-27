@@ -479,7 +479,7 @@ pub fn do_upgrade_booths(args: CliUpgradeBooths) -> color_eyre::eyre::Result<()>
     }
 
     impl PartialEq for Sa1sBooth {
-        fn eq(&self, other: &Sa1sBooth) -> bool {
+        fn eq(&self, other: &Self) -> bool {
             (
                 &self.year,
                 &self.state_ab,
